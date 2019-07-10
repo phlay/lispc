@@ -88,6 +88,7 @@ class LispBuiltin(LispObj):
         self.function = f
         self.argc = argc
         self.side_effect = side
+        self.link = "__" + f.__name__
 
     def __repr__(self):
         return '<' + self.name + '>'

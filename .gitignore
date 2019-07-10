@@ -2,3 +2,4 @@ __pycache__
 parsetab.py
 **/*.o
 runtime/runtime.a
+a.out

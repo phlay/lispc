@@ -3,27 +3,30 @@
 
 section .text
 
-; putc - print character on stdout
+; print character on stdout
 ;
 ; rsi	pointer to character to print
 ;
-		global putc
+		global	__putc
 
-putc:		mov	rax, SYS_WRITE
+__putc:		mov	rax, SYS_WRITE
 		mov	rdi, FD_STDOUT
 		mov	rdx, 1
 		syscall
 		ret
 
 
-		global putnl
-putnl:		mov	rsi, char_nl
-		call	putc
+		global	__putnl
+
+__putnl:	lea	rsi, [char_nl]
+		call	__putc
 		ret
 
-		global	putsp
-putsp:		mov	rsi, char_space
-		call	putc
+
+		global	__putsp
+
+__putsp:	lea	rsi, [char_space]
+		call	__putc
 		ret
 
 

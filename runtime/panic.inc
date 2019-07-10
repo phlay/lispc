@@ -1,1 +1,1 @@
-extern	panic
+extern	__panic

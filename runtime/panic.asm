@@ -9,14 +9,14 @@ section	.text
 ;
 ;	rsi	error message to display
 ;
-		global	panic
+		global	__panic
 
-panic:		push	rsi
+__panic:	push	rsi
 		mov	rsi, panic_msg
-		call	puts
+		call	__puts
 		pop	rsi
-		call	puts
-		call	putnl
+		call	__puts
+		call	__putnl
 
 		mov	rax, SYS_EXIT
 		xor	rdi, rdi
@@ -26,4 +26,4 @@ panic:		push	rsi
 
 section .data
 
-panic_msg:	db "Error: ", 0
+panic_msg	db "Error: ", 0

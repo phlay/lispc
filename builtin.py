@@ -104,8 +104,8 @@ def builtin_println(*param):
 TABLE = {
         'head' : LispBuiltin(builtin_head, 1),
         'tail' : LispBuiltin(builtin_tail, 1),
-        'print' : LispBuiltin(builtin_print, side=True),
-        'println' : LispBuiltin(builtin_println, side=True),
+        'print' : LispBuiltin(builtin_print, None, side=True),
+        'println' : LispBuiltin(builtin_println, None, side=True),
         'cons' : LispBuiltin(builtin_cons, 2),
         #'atom' : LispBuiltin(builtin_atom, 1),
         #'eq' : LispBuiltin(builtin_eq, 2),

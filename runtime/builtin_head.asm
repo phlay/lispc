@@ -1,9 +1,9 @@
 %include "cell.inc"
 
-		global	builtin_head
-		global	builtin_head.continue
+		global	__builtin_head
+		global	__builtin_head.continue
 
-builtin_head:	pop	rax
+__builtin_head:	pop	rax
 		mov	[rsp + 8], rax
 
 .continue:	pop	rbx

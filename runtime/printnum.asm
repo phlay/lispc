@@ -1,28 +1,28 @@
-		extern putc
+%include "putc.inc"
 
 section .text
 
 
-; printnum10 - print decimal number
+; print decimal number
 ;
 ; rax		number to print
 ;
 
-		global printnum10
+		global __printnum10
 
-printnum10:	mov	rbx, 10
+__printnum10:	mov	rbx, 10
 
 
-; printnum - print number using putc
+; print number using putc
 ;
 ; rax		number to print
 ; rbx		radix with 0 < rbx <= 10
 ;
 ; changes: rax (=0), rcx, rdx, rsi, rdi
 ;
-		global printnum
+		global	__printnum
 
-printnum:	mov	rsi, buffer
+__printnum:	lea	rsi, [buffer]
 
 		; in case of non-negative number go right into recursion
 		; but skip the intro check (so zero gets printed).
@@ -32,7 +32,7 @@ printnum:	mov	rsi, buffer
 		neg	rax			; make rax positive
 		push	rax			; and print minus
 		mov	byte [rsi], '-'
-		call	putc
+		call	__putc
 		pop	rax
 
 .print:		test	rax, rax
@@ -51,10 +51,10 @@ printnum:	mov	rsi, buffer
 		jb	.putc
 		add	byte [rsi], 'a'-'0'-10
 
-.putc:		call	putc
+.putc:		call	__putc
 .exit:		ret
 
 
 section .bss
 
-	buffer		resb 1
+buffer		resb 1

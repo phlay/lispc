@@ -1,1 +1,1 @@
-extern puts
+extern	__puts

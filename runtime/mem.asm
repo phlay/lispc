@@ -10,8 +10,8 @@ section .text
 ; RSI	number cells to allocate in pool
 ;
 ;
-		global	mem_init
-mem_init:
+		global	__mem_init
+__mem_init:
 		; use mmap to allocate memory
 		mov	rax, SYS_MMAP
 		xor	rdi, rdi				; addr
@@ -26,10 +26,10 @@ mem_init:
 		test	rax, rax
 		je	.errout
 
-		mov	[_pool], rax
-		mov	[_next_free], rax
+		mov	[pool], rax
+		mov	[next_free], rax
 		add	rax, rsi
-		mov	[_pool_end], rax
+		mov	[pool_end], rax
 
 		mov	rbp, MASK_ADDR
 
@@ -40,15 +40,15 @@ mem_init:
 
 
 ;
-; mem_alloc - allocates a new cell from pool
+; allocates a new cell from pool
 ;
 ; output:
 ;	rdi	address of new cell without any type information
 ;
 
-		global	mem_alloc
-mem_alloc:
-		mov	rdi, [_next_free]
+		global	__mem_alloc
+__mem_alloc:
+		mov	rdi, [next_free]
 
 		;
 		; XXX check used
@@ -61,27 +61,25 @@ mem_alloc:
 		; XXX garbage collect
 		;
 		;; start searching from beginning again
-		; mov	rax, [_pool]
+		; mov	rax, [pool]
 		;
 		;; search stack for values to mark
 		;
 
 		; collecting garbage did not help => die
-		mov	rdi, mem_oom_msg
-		call	panic
+		mov	rsi, mem_oom_msg
+		call	__panic
 		; not reached
 
 
 .out:		mov	r8, rdi
 		add	r8, 16
-		mov	[_next_free], r8
+		mov	[next_free], r8
 		ret
 
 
-
-
 ;
-; mem_cons
+; construct a new cell from two cell addresses
 ;
 ; input:
 ;	RAX	cell x
@@ -90,9 +88,9 @@ mem_alloc:
 ; output:
 ;	RAX	( cons x y )
 ;
-		global	mem_cons
+		global	__mem_cons
 
-mem_cons:	call	mem_alloc		; allocate cell
+__mem_cons:	call	__mem_alloc		; allocate cell
 
 		mov	[rdi], rax		; left
 		mov	[rdi + 8], rbx		; right
@@ -106,7 +104,7 @@ mem_cons:	call	mem_alloc		; allocate cell
 
 
 ;
-; mem_int - allocate integer cell
+; allocate integer cell
 ;
 ; input:
 ;	RAX	integer to put into cell
@@ -114,9 +112,9 @@ mem_cons:	call	mem_alloc		; allocate cell
 ; returns:
 ;	RAX	cell holding integer
 ;
-		global	mem_int
+		global	__mem_int
 
-mem_int:	call	mem_alloc
+__mem_int:	call	__mem_alloc
 
 		mov	[rdi], rax		; left  <- integer
 		xor	rax, rax		; right <- null
@@ -130,8 +128,7 @@ mem_int:	call	mem_alloc
 
 
 
-
-; mem_string - alloctes a lisp string
+; alloctes a lisp string from a buffer
 ;
 ; input:
 ;	RSI	string pointer
@@ -141,12 +138,12 @@ mem_int:	call	mem_alloc
 ;	RAX	cell with string
 ;
 
-		global	mem_string
+		global	__mem_string
 
-mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
+__mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
 		std
 
-		call	mem_alloc		; allocate last string block
+		call	__mem_alloc		; allocate last string block
 		xor	rdx, rdx
 		mov	[rdi], rdx		; zero fill
 		mov	[rdi + 8], rdx		; and NIL termination
@@ -170,7 +167,7 @@ mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
 		jz	.out
 
 		push	rax			; save current result on stack
-		call	mem_alloc
+		call	__mem_alloc
 		pop	qword [rdi + 8]		; link old string in
 
 .full_block:	mov	rcx, 8			; fill full 8 byte block
@@ -185,7 +182,6 @@ mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
 
 
 
-
 section .data
 
 mem_oom_msg:	db "out of memory", 0
@@ -194,6 +190,6 @@ mem_oom_msg:	db "out of memory", 0
 
 section .bss
 
-_pool		resq	1
-_pool_end	resq	1
-_next_free	resq	1
+pool		resq	1
+pool_end	resq	1
+next_free	resq	1

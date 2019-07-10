@@ -16,14 +16,15 @@ class Compiler:
 
         self.env = env
 
-        self.recompile(target)
+        self.compile(target)
 
 
-    def recompile(self, target = None):
+    def compile(self, target = None):
         self._counter = 0
 
         self.compiled_lambda = {}
 
+        self.extern = set()
         self.builtin = set()
 
         self.string_cache = {}
@@ -83,13 +84,13 @@ class Compiler:
 
         result = ""
 
-        result += "extern\tmem_cons\n"
-        result += "extern\tmem_int\n"
-        result += "extern\tmem_string\n"
+        for label in self.extern:
+            result += "extern\t%s\n" % (label)
 
         for builtin in self.builtin:
             result += "extern\t%s\n" % (builtin)
             result += "extern\t%s.continue\n" % (builtin)
+
         result += "\n"
 
         result += "section .text\n\n"
@@ -134,8 +135,8 @@ class Compiler:
 
             item = self.env.symbols[expr]
             if type(item) == LispBuiltin:
-                self.builtin.add(item.name)
-                return item.name, item.argc
+                self.builtin.add(item.link)
+                return item.link, item.argc
 
             if item.is_head("λ"):
                 return self.add_lambda(item, expr), item[1]
@@ -246,12 +247,13 @@ class LambdaCompiler:
         if type(function) == LispSym:
 
             if function == "if":
+                self.compiler.extern.add("__true")
                 iflabel = ".if_%d_false" % self.counter()
 
                 # evaluate if-expression
                 self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
-                self.text += "\tcall\tcell_is_true\n"
+                self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel)
 
                 # true case
@@ -318,11 +320,12 @@ class LambdaCompiler:
 
         if type(function) == LispSym:
             if function == "if":
+                self.compiler.extern.add("__true")
                 iflabel = ".if_%d_" % self.counter()
                 # evaluate if-expression
                 self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
-                self.text += "\tcall\tcell_is_true\n"
+                self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel+"false")
                 # true case
                 self.text += "\n"
@@ -367,12 +370,13 @@ class LambdaCompiler:
         action = "jmp" if exit else "call"
 
         if type(expr) == LispInt:
+            self.compiler.extern.add("__mem_int")
             self.text += "\tmov\trax, %d\n" % (expr)
-            self.text += "\t%s\tmem_int\n" % (action)
+            self.text += "\t%s\t__mem_int\n" % (action)
 
         #elif type(expr) == LispReal:
         #    self.text += "\tmov\txmm0, %f\n" % (expr)
-        #    self.text += "\t%s\tmem_real\n" % (action)
+        #    self.text += "\t%s\t__mem_real\n" % (action)
 
         elif type(expr) == LispRef:
             self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % (self.stack_offset + int(expr) - 1,
@@ -384,14 +388,15 @@ class LambdaCompiler:
         #    label = self.compiler.get_string_label(expr)
         #
         #    self.text += "\tlea\trdi, [%s]\n" % (label)
-        #    self.text += "\t%s\tmem_sym\n" % (action)
+        #    self.text += "\t%s\t__mem_sym\n" % (action)
 
         elif type(expr) == LispStr:
+            self.compiler.extern.add("__mem_string")
             label = self.compiler.get_string_label(expr)
 
             self.text += "\tmov\trsi, %s\n" % (label)
             self.text += "\tmov\trbx, %d\n" % (len(expr))
-            self.text += "\t%s\tmem_string\n" % (action)
+            self.text += "\t%s\t__mem_string\n" % (action)
 
         elif type(expr) == LispList:
             if len(expr) == 0:

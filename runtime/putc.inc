@@ -1,3 +1,3 @@
-extern putc
-extern putnl
-extern putsp
+extern	__putc
+extern	__putnl
+extern	__putsp

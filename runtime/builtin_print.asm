@@ -7,17 +7,18 @@
 section .text
 
 
-; print - prints it's parameter in nice form
+; prints it's parameter in nice form
 ;
 ; stack: dummy, p1, ..., pk, k
 ;
 ; where p1, ..., pk are the cell-addresses to be printed
 ;
 
-		global	builtin_print
-		global	builtin_print.continue
+		global	__builtin_print
+		global	__builtin_print.continue
 
-builtin_print:	pop	rax			; extended prologue
+__builtin_print:
+		pop	rax			; extended prologue
 		pop	rbx
 		mov	[rsp + 8*rbx], rax
 		push	rbx
@@ -40,10 +41,10 @@ builtin_print:	pop	rax			; extended prologue
 		ret
 
 
-		global	builtin_println
-		global	builtin_println.continue
+		global	__builtin_println
+		global	__builtin_println.continue
 
-builtin_println:
+__builtin_println:
 		pop	rax			; extended prologue
 		pop	rbx
 		mov	[rsp + 8*rbx], rax
@@ -53,7 +54,7 @@ builtin_println:
 		inc	rbx
 		push	msg_nl
 		push	rbx
-		jmp	builtin_print.continue
+		jmp	__builtin_print.continue
 
 
 
@@ -86,25 +87,25 @@ print_cell:	mov	rdx, r8			; dl <- type(r8)
 		ret
 
 ;print_ptr:	mov	rsi, msg_hex
-;		call	puts
+;		call	__puts
 ;		mov	rax, r8
 ;		mov	rbx, 16
-;		call	printnum
+;		call	__printnum
 ;		clc
 ;		ret
 
 print_cstr:	mov	rsi, r8
-		call	puts
+		call	__puts
 		clc
 		ret
 
 print_nil:	mov	rsi, msg_nil
-		call	puts
+		call	__puts
 		clc
 		ret
 
 print_cons:	mov	rsi, char_lb
-		call	putc
+		call	__putc
 
 .left:		push	r8
 		mov	r8, [r8]		; r8 <- left(r8)
@@ -119,22 +120,22 @@ print_cons:	mov	rsi, char_lb
 		jz	.out
 		cmp	dl, TYPE_CONS		; check type
 		jne	.right
-		call	putsp
+		call	__putsp
 		and	r8, rbp
 		jmp	.left
 
-.right:		call	putsp
+.right:		call	__putsp
 		mov	rsi, char_dot
-		call	putc
-		call	putsp
+		call	__putc
+		call	__putsp
 		call	print_cell
 .out:		mov	rsi, char_rb
-		call	putc
+		call	__putc
 		clc
 		ret
 
 print_int:	mov	rax, [r8]		; rax <- left(r8)
-		call	printnum10
+		call	__printnum10
 		clc
 		ret
 
@@ -144,7 +145,7 @@ print_str:	mov	rsi, r8
 .loop:		cmp	byte [rsi], 0
 		je	.done
 		push	rcx
-		call	putc
+		call	__putc
 		pop	rcx
 		inc	rsi
 		loop	.loop
@@ -163,7 +164,7 @@ print_str:	mov	rsi, r8
 		ret
 
 .error:		mov	rsi, msg_strerror
-		call	puts
+		call	__puts
 		stc
 		ret
 

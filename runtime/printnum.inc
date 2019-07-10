@@ -1,2 +1,2 @@
-extern printnum
-extern printnum10
+extern	__printnum
+extern	__printnum10
