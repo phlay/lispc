@@ -106,7 +106,7 @@ TABLE = {
         'tail' : LispBuiltin(builtin_tail, 1),
         'print' : LispBuiltin(builtin_print, side=True),
         'println' : LispBuiltin(builtin_println, side=True),
-        #'cons' : LispBuiltin(builtin_cons, 2),
+        'cons' : LispBuiltin(builtin_cons, 2),
         #'atom' : LispBuiltin(builtin_atom, 1),
         #'eq' : LispBuiltin(builtin_eq, 2),
         #'list' : LispBuiltin(builtin_list),

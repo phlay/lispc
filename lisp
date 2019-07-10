@@ -16,7 +16,7 @@ parser.add_argument("-i", dest="interactive", help="interactive mode", action="s
 parser.add_argument("-s", dest="symbol", help="start symbol, default is main", default="main")
 parser.add_argument("-c", dest="compile", help="compile", action="store_true")
 parser.add_argument("-o", dest="output", help="compilation output file", default="a.out")
-parser.add_argument("-a", dest="asm", help="don't delete assembly file after compiling", action="store_true")
+parser.add_argument("-a", dest="leave_asm", help="don't delete assembly file after compiling", action="store_true")
 parser.add_argument("-p", dest="print", help="give assembly listing to stdout", action="store_true")
 
 args = parser.parse_args()
@@ -42,14 +42,14 @@ for fn in args.files:
 
 
 
-if args.compile:
+if args.compile or args.print:
     try:
         comp = compiler.Compiler(env, target=args.symbol)
 
         if args.print:
-            print(comp.get_assembly())
+            sys.stdout.write(comp.get_assembly())
         else:
-            comp.build(args.output, leave_asm=args.asm)
+            comp.build(args.output, leave_asm=args.leave_asm)
 
     except LispError as e:
         print('Error: %s' % (e))

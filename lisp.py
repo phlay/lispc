@@ -51,18 +51,21 @@ class LispList(list, LispObj):
         if len(self) == 2 and type(self[0]) == LispSym and self[0] == 'quote':
             return "'%s" % (str(self[1]))
 
-        return '(' + ' '.join(map(str, self)) + ')'
+        return '(' + ' '.join(map(repr, self)) + ')'
+
+    def __repr__(self):
+        return str(self)
 
 
 
 class LispSym(str, LispObj):
     def __repr__(self):
-        return 'LispSym(%s)' % (str(self))
+        return str(self)
 
 
 class LispRef(int, LispObj):
     def __repr__(self):
-        return 'LispRef(%d)' % (int(self))
+        return str(self)
 
     def __str__(self):
         return '$%d' % (int(self))
@@ -76,8 +79,8 @@ class LispReal(float, LispObj):
     pass
 
 class LispStr(str, LispObj):
-    def __str__(self):
-        return '"' + str.__str__(self) + '"'
+    def __repr__(self):
+        return '"' + str(self) + '"'
 
 class LispBuiltin(LispObj):
     def __init__(self, f, argc = None, side = False):

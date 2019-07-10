@@ -4,7 +4,6 @@
 %include "cell.inc"
 
 section .text
-		align	8
 ;
 ; initialize memory pool
 ;

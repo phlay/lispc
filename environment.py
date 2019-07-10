@@ -257,10 +257,11 @@ class Environment:
 
         # compile function call
 
-        try:
-            return self.evaluate(expr, stack, local)
-        except EvalNoValue:
-            pass
+        # XXX optimization disabled for now
+        #try:
+        #    return self.evaluate(expr, stack, local)
+        #except EvalNoValue:
+        #    pass
 
         compiled_expr = LispList([ self.bake_expr(p, stack, local) for p in expr ])
         compiled_function = compiled_expr.head()
@@ -280,14 +281,15 @@ class Environment:
         case_true = self.bake_expr(parameter[1], stack, local)
         case_false = self.bake_expr(parameter[2], stack, local)
 
-        if not condition.is_head('quote'):
-            try:
-                if self.evaluate(condition, stack, local).is_true():
-                    return case_true
-                else:
-                    return case_false
-            except EvalNoValue:
-                pass
+        # XXX optimization disabled for now
+        #if not condition.is_head('quote'):
+        #    try:
+        #        if self.evaluate(condition, stack, local).is_true():
+        #            return case_true
+        #        else:
+        #            return case_false
+        #    except EvalNoValue:
+        #        pass
 
         # direct evaluation did not work out, compile conditional instead
         condition = self.bake_expr(condition, stack, local)

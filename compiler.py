@@ -47,7 +47,6 @@ class Compiler:
         asm_name = output + ".asm"
         obj_name = output + ".o"
 
-
         # write assembly file
         with open(asm_name, "wb") as f:
             f.write(self.get_assembly().encode('utf8'))
@@ -102,7 +101,7 @@ class Compiler:
             result += "section .data\n\n"
 
             for string, label in self.string_cache.items():
-                result += '%s:\tdb %s\n' % (label, string)
+                result += '%s:\tdb "%s"\n' % (label, string)
 
         return result
 
@@ -393,6 +392,16 @@ class LambdaCompiler:
             self.text += "\tmov\trsi, %s\n" % (label)
             self.text += "\tmov\trbx, %d\n" % (len(expr))
             self.text += "\t%s\tmem_string\n" % (action)
+
+        elif type(expr) == LispList:
+            if len(expr) == 0:
+                self.text += "\txor\trax, rax\n"
+            else:
+                raise CompileError("return of non empty lists are not yet supported")
+
+            if exit:
+                self.text += "\tret\n"
+
         else:
             raise CompileError("can't compile atom: %s" % (expr))
 
