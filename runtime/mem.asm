@@ -140,7 +140,10 @@ __mem_int:	call	__mem_alloc
 
 		global	__mem_string
 
-__mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
+__mem_string:	test	rbx, rbx		; use shortcut if empty
+		jz	.loop
+
+		lea	rsi, [rsi + rbx - 1]	; go to end of string
 		std
 
 		call	__mem_alloc		; allocate last string block
@@ -151,9 +154,7 @@ __mem_string:	lea	rsi, [rsi + rbx - 1]	; go to end of string
 		xor	rcx, rcx		; rcx <- rbx mod 8
 		mov	cl, bl
 		and	cl, 0x07
-
-		test	cl, cl			; do we need this?
-		jz	.full_block
+		jz	.full_block		; do we need a partial block?
 
 		sub	rbx, rcx		; copy last bytes of str
 		lea	rdi, [rdi + rcx - 1]
