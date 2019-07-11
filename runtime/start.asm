@@ -1,6 +1,6 @@
 %include "syscall.inc"
+%include "cell.inc"
 %include "mem.inc"
-%include "puts.inc"
 %include "panic.inc"
 
 extern	main
@@ -9,8 +9,10 @@ section .text
 
 
 		global	_start
-_start:
-		mov	rsi, 16*1024*1024
+
+_start:		mov	rbp, MASK_ADDR
+
+		mov	rsi, 64*1024*1024
 		call	__mem_init
 		jc	.panic_memory
 
@@ -22,6 +24,7 @@ _start:
 .exit:		mov	rax, SYS_EXIT
 		xor	rdi, rdi
 		syscall
+
 
 .errexit:	mov	rax, SYS_EXIT
 		xor	rdi, rdi

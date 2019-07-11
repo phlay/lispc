@@ -3,6 +3,7 @@
 %include "panic.inc"
 %include "cell.inc"
 
+
 section .text
 ;
 ; initialize memory pool
@@ -18,20 +19,18 @@ __mem_init:
 		shl	rsi, 4					; length
 		mov	rdx, PROT_READ | PROT_WRITE		; prot
 		mov	r10, MAP_PRIVATE | MAP_ANONYMOUS	; flags
-		mov	r8, -1					; fd
-		mov	r9, 0					; offset
+		xor	r8, r8					; fd
+		dec	r8
+		xor	r9, r9					; offset
 		syscall
-		cmp	eax, MAP_FAILED
-		je	.errout
-		test	rax, rax
-		je	.errout
+		mov	rbx, rax	; check for MAP_FAILED = -1
+		inc	rbx
+		jz	.errout
 
 		mov	[pool], rax
 		mov	[next_free], rax
 		add	rax, rsi
 		mov	[pool_end], rax
-
-		mov	rbp, MASK_ADDR
 
 		clc
 		ret
@@ -185,8 +184,7 @@ __mem_string:	test	rbx, rbx		; use shortcut if empty
 
 section .data
 
-mem_oom_msg:	db "out of memory", 0
-
+mem_oom_msg	db "out of memory", 0
 
 
 section .bss
