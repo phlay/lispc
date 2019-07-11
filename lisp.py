@@ -21,6 +21,8 @@ class LispObj:
     def tail(self):
         raise LispError("tail only defined for list")
 
+    def consify(self):
+        return self
 
 
 
@@ -51,6 +53,14 @@ class LispList(list, LispObj):
             return True
 
         return False
+
+    def consify(self):
+        if len(self) == 0:
+            result = LispList([])
+        else:
+            result = LispList( [ LispSym('cons'), self.head().consify(), self.tail().consify() ] )
+
+        return result
 
     def __str__(self):
         # special case for quote

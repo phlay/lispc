@@ -245,6 +245,9 @@ class LambdaCompiler:
         if type(function) == LispSym:
 
             if function == "if":
+                if len(parameter) != 3:
+                    raise CompileError("if expects exactly three parameter but got %d" % (len(parameter)))
+
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%d_false" % self.counter()
 
@@ -265,14 +268,20 @@ class LambdaCompiler:
                 return
 
             elif function == "eval":
+                if len(parameter) != 1:
+                    raise CompileError("eval expects exactly one parameter but got %d" % (len(parameter)))
+
                 self.compiler.extern.add("__eval")
                 self.emit_call_expr(parameter[0])
                 self.text += "\tjmp\t__eval\n"
                 return
 
             elif function == "quote":
-                # XXX
-                raise CompileError("can't return quotes yet")
+                if len(parameter) != 1:
+                    raise CompileError("quote expects exactly one parameter but got %d" % (len(parameter)))
+
+                self.emit_continue_expr(parameter[0].consify())
+                return
 
 
             elif function == "λ":
@@ -320,11 +329,16 @@ class LambdaCompiler:
             self.emit_constant_to_rax(expr)
             return
 
+        #print("[DEBUG] emit_call_expr: %s" % (expr))
+
         function = expr[0]
         parameter = expr[1:]
 
         if type(function) == LispSym:
             if function == "if":
+                if len(parameter) != 3:
+                    raise CompileError("if expects exactly three parameter but got %d" % (len(parameter)))
+
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%d_" % self.counter()
                 # evaluate if-condition
@@ -346,14 +360,21 @@ class LambdaCompiler:
                 return
 
             elif function == "eval":
+                if len(parameter) != 1:
+                    raise CompileError("eval expects exactly one parameter but got %d" % (len(parameter)))
+
                 self.compiler.extern.add("__eval")
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__eval\n"
                 return
 
             elif function == "quote":
-                # XXX
-                raise CompileError("quote not implemented yet")
+                if len(parameter) != 1:
+                    raise CompileError("quote expects exactly one parameter but got %d" % (len(parameter)))
+
+                self.emit_call_expr(parameter[0].consify())
+                return
+
 
         function_label, function_argc = self.compiler.get_function_label(function)
         if function_argc is not None and function_argc != len(parameter):
@@ -379,6 +400,16 @@ class LambdaCompiler:
     def emit_constant_to_rax(self, expr, exit = False):
 
         action = "jmp" if exit else "call"
+        sym = None
+
+        # if expression is a symbol, we resolve it first
+        if type(expr) == LispSym:
+            sym = expr
+            if sym not in self.compiler.env.symbols:
+                raise CompileError("%s: undefined symbol" % (sym))
+
+            expr = self.compiler.env.symbols[sym]
+
 
         if type(expr) == LispInt:
             self.compiler.extern.add("__mem_int")
@@ -390,8 +421,8 @@ class LambdaCompiler:
         #    self.text += "\t%s\t__mem_real\n" % (action)
 
         elif type(expr) == LispRef:
-            self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % (self.stack_offset + int(expr) - 1,
-                                                               expr)
+            self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
+                    (self.stack_offset + int(expr) - 1, expr)
             if exit:
                 raise CompileError("internal error - exit to rax with stack reference")
 
@@ -403,38 +434,36 @@ class LambdaCompiler:
             self.text += "\tmov\trbx, %d\n" % (len(expr))
             self.text += "\t%s\t__mem_string\n" % (action)
 
+        elif type(expr) == LispBuiltin or expr.is_head("λ"):
+            self.compiler.extern.add("__mem_lambda")
+
+            # XXX this is not nice!
+            if sym is not None:
+                function_label, function_argc = self.compiler.get_function_label(sym)
+            else:
+                function_label, function_argc = self.compiler.get_function_label(expr)
+
+            # if function is variadic use 65536 to signal this
+            if function_argc is None:
+                function_argc = 65536               # XXX this should'nt be hardcoded!
+
+            self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
+            if function_argc == 0:
+                self.text += "\txor\trbx, rbx\n"
+            else:
+                self.text += "\tmov\trbx, %d\n" % (function_argc)
+
+            self.text += "\t%s\t__mem_lambda\n" % (action)
+
         elif type(expr) == LispList:
             if len(expr) == 0:
-                self.text += "\txor\trax, rax\n"
+                self.text += "\tmov\tal, 1\n"       # XXX this should'nt be hardcoded!
+                self.text += "\tshl\trax, 59\n"
             else:
-                raise CompileError("return of non empty lists are not yet supported")
+                raise CompileError("%s: return of non empty lists are not yet supported" % (expr))
 
             if exit:
                 self.text += "\tret\n"
 
-        elif type(expr) == LispSym:
-            sym = expr
-            if sym not in self.compiler.env.symbols:
-                raise CompileError("%s: undefined symbol" % (sym))
-
-            value = self.compiler.env.symbols[sym]
-            self.emit_constant_to_rax(value, exit)
-
-        elif type(expr) == LispBuiltin or expr.is_head("λ"):
-
-            self.compiler.extern.add("__mem_lambda")
-            function_label, function_argc = self.compiler.get_function_label(expr)
-
-            # if function is variadic use 65536 to signal this
-            if function_argc is None:
-                function_argc = 65536
-
-            self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
-            self.text += "\tmov\trbx, %d\n" % (function_argc)
-            self.text += "\t%s\t__mem_lambda\n" % (action)
-
         else:
             raise CompileError("can't compile atom: %s" % (expr))
-
-        # XXX emit constant lists
-

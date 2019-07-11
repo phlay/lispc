@@ -138,7 +138,8 @@ __mem_int:	call	__mem_alloc
 
 		global	__mem_string
 
-__mem_string:	test	rbx, rbx		; use shortcut if empty
+__mem_string:	xor	rdi, rdi
+		test	rbx, rbx		; use shortcut if empty
 		jz	.loop
 
 		lea	rsi, [rsi + rbx - 1]	; go to end of string
@@ -196,7 +197,7 @@ __mem_string:	test	rbx, rbx		; use shortcut if empty
 __mem_lambda:	call	__mem_alloc
 
 		mov	[rdi], rsi
-		mov	[rdi + 8], rsi
+		mov	[rdi + 8], rbx
 
 		mov	al, TYPE_LAMBDA
 		shl	rax, SHIFT_TYPE
