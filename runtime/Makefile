@@ -1,7 +1,7 @@
 AS = nasm
 ASFLAGS = -f elf64
 
-OBJ = start.o mem.o panic.o puts.o putc.o printnum.o true.o \
+OBJ = start.o mem.o panic.o puts.o putc.o printnum.o true.o eval.o \
       builtin_cons.o builtin_head.o builtin_tail.o builtin_print.o \
       builtin_atom.o
 

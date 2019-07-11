@@ -64,8 +64,7 @@ elif args.interactive or len(args.files) == 0:
                 continue
 
             result = env.interpret_single_line(line)
-            if result is not None:
-                print("  = %s\n" % (result))
+            print("  = %s\n" % (result))
 
         except LispError as e:
             print('Error: %s\n' % (e))

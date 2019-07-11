@@ -12,6 +12,9 @@ class LispObj:
     def is_head(self, name):
         return False
 
+    def is_executeable(self):
+        return False
+
     def head(self):
         raise LispError("head only defined for list")
 
@@ -40,6 +43,9 @@ class LispList(list, LispObj):
     def is_atom(self):
         return len(self) == 0
 
+    def is_executeable(self):
+        return self.is_head("λ")
+
     def is_head(self, name):
         if len(self) > 0 and type(self[0]) == LispSym and self[0] == name:
             return True
@@ -62,10 +68,16 @@ class LispSym(str, LispObj):
     def __repr__(self):
         return str(self)
 
+    def is_executeable(self):
+        return True
+
 
 class LispRef(int, LispObj):
     def __repr__(self):
         return str(self)
+
+    def is_executeable(self):
+        return True
 
     def __str__(self):
         return '$%d' % (int(self))
@@ -75,12 +87,22 @@ class LispInt(int, LispObj):
     def is_true(self):
         return self != 0
 
+    def is_executeable(self):
+        return False
+
+
 class LispReal(float, LispObj):
-    pass
+    def is_executeable(self):
+        return False
+
 
 class LispStr(str, LispObj):
     def __repr__(self):
         return '"' + str(self) + '"'
+
+    def is_executeable(self):
+        return False
+
 
 class LispBuiltin(LispObj):
     def __init__(self, f, argc = None, side = False):
@@ -88,7 +110,7 @@ class LispBuiltin(LispObj):
         self.function = f
         self.argc = argc
         self.side_effect = side
-        self.link = "__" + f.__name__
+        self.extern = "__" + f.__name__
 
     def __repr__(self):
         return '<' + self.name + '>'
@@ -96,3 +118,8 @@ class LispBuiltin(LispObj):
     def __str__(self):
         return '<' + self.name + '>'
 
+    def is_executeable(self):
+        return True
+
+
+NIL = LispList([])

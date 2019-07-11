@@ -145,14 +145,18 @@ class Environment:
         evalpar = [ self.evaluate(p, stack, local) for p in parameter ]
 
         if type(evalfun) == LispBuiltin:
-            if evalfun.side_effect and len(local) > 0:
-                raise EvalNoValue("builtin with side-effects has no pre-known value")
+            if evalfun.argc is not None and evalfun.argc != len(evalpar):
+                raise EvalError("%s: expects %d parameter, got %d" % (function, evalfun.argc, len(evalpar)))
+
             try:
                 return evalfun.function(*evalpar)
             except TypeError:
-                raise EvalError("illegal number of parameter to builtin function %s" % (function))
+                raise EvalError("%s: illegal number of parameter to builtin function" % (function))
 
         elif evalfun.is_head("λ"):
+            if evalfun[1] != len(evalpar):
+                raise EvalError("%s: expects %d parameter, got %d" % (function, evalfun[1], len(evalpar)))
+
             return self.eval_apply_lambda(evalfun, evalpar, stack, local)
 
         else:
@@ -266,7 +270,7 @@ class Environment:
         compiled_expr = LispList([ self.bake_expr(p, stack, local) for p in expr ])
         compiled_function = compiled_expr.head()
 
-        if type(compiled_function) != LispSym and type(compiled_function) != LispBuiltin and not compiled_function.is_head("λ"):
+        if not compiled_function.is_executeable():
             raise EvalError("function is not executable: %s" % (compiled_function))
 
         return compiled_expr

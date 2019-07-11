@@ -95,10 +95,12 @@ def builtin_gt(x, y):
 def builtin_print(*param):
     for p in param:
         print(p, end='')
+    return NIL
 
 def builtin_println(*param):
     builtin_print(*param)
     print()
+    return NIL
 
 
 TABLE = {

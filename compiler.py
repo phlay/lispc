@@ -25,7 +25,6 @@ class Compiler:
         self.compiled_lambda = {}
 
         self.extern = set()
-        self.builtin = set()
 
         self.string_cache = {}
         self.lambda_cache = {}
@@ -86,11 +85,6 @@ class Compiler:
 
         for label in self.extern:
             result += "extern\t%s\n" % (label)
-
-        for builtin in self.builtin:
-            result += "extern\t%s\n" % (builtin)
-            result += "extern\t%s.continue\n" % (builtin)
-
         result += "\n"
 
         result += "section .text\n\n"
@@ -113,40 +107,45 @@ class Compiler:
         return result
 
 
-    def add_lambda(self, expr, label = None):
-        # do we have a label for this?
-        if str(expr) in self.lambda_cache:
-            return self.lambda_cache[str(expr)]
-
-        # anonymous?
-        if label is None:
-            label = "__lambda_%d" % (self.counter())
-
-        self.lambda_cache[str(expr)] = label
-        self.compiled_lambda[label] = LambdaCompiler(self, expr, label)
-        return label
-
-
     def get_function_label(self, expr):
+        sym = None
 
+        # do we get an symbol? resolve it
         if type(expr) == LispSym:
-            if expr not in self.env.symbols:
-                raise CompileError("%s: undefined symbol" % (expr))
+            sym = expr
+            if sym not in self.env.symbols:
+                raise CompileError("%s: undefined symbol" % (sym))
 
-            item = self.env.symbols[expr]
-            if type(item) == LispBuiltin:
-                self.builtin.add(item.link)
-                return item.link, item.argc
+            expr = self.env.symbols[sym]
 
-            if item.is_head("λ"):
-                return self.add_lambda(item, expr), item[1]
+        if expr.is_head("λ"):
+            argc = expr[1]
 
-            raise CompileError("%s: symbol is not callable" % (expr))
+            # do we already have a label for this?
+            if str(expr) in self.lambda_cache:
+                return self.lambda_cache[str(expr)], argc
 
-        elif expr.is_head("λ"):
-            return self.add_lambda(expr), expr[1]
+            # invent a label if this is anonymous
+            if sym is None:
+                label = "__lambda_%d" % (self.counter())
+            else:
+                label = sym
+
+            # finally enter laber in our cache and compile it
+            self.lambda_cache[str(expr)] = label
+            self.compiled_lambda[label] = LambdaCompiler(self, expr, label)
+
+            return label, argc
+
+        elif type(expr) == LispBuiltin:
+            self.extern.add(expr.extern)
+            self.extern.add(expr.extern + ".continue")
+
+            return expr.extern, expr.argc
+
 
         raise CompileError("%s: not executeable" % (expr))
+
 
 
     def get_string_label(self, string):
@@ -156,7 +155,6 @@ class Compiler:
         label = "__string_%d" % (self.counter())
         self.string_cache[string] = label
         return label
-
 
 
 
@@ -266,22 +264,29 @@ class LambdaCompiler:
                 self.emit_continue_expr(argc, parameter[2])
                 return
 
-            elif function == "λ":
-                # XXX
-                raise CompileError("can't yet return closures")
+            elif function == "eval":
+                self.compiler.extern.add("__eval")
+                self.emit_call_expr(parameter[0])
+                self.text += "\tjmp\t__eval\n"
+                return
 
             elif function == "quote":
                 # XXX
                 raise CompileError("can't return quotes yet")
 
 
+            elif function == "λ":
+                # XXX
+                raise CompileError("can't yet return closures")
+
+
         function_label, function_argc = self.compiler.get_function_label(function)
-
-        # check if number of parameters are correct
         if function_argc is not None and function_argc != len(parameter):
-            raise CompileError("%s: exects %d parameter" % (function, function_argc))
+            raise CompileError("%s: expects %d parameter but got %d" % (function, function_argc, len(parameter)))
 
-        original_parameter_count = len(parameter)       # XXX
+        # safe the number of parameter, since we might optimize some away
+        # but we need this information later
+        parameter_count = len(parameter)
 
         # check for parameter-takeover case
         while argc > 0 and len(parameter) > 0:
@@ -299,9 +304,9 @@ class LambdaCompiler:
             self.stack_offset += 1
             self.text += "\n"
 
-        # parameter count if needed XXX this has to go!
+        # parameter count if called function is variadic
         if function_argc is None:
-            self.text += "\tpush\tqword %d\n" % (original_parameter_count)
+            self.text += "\tpush\tqword %d\n" % (parameter_count)
 
         self.emit_parameter_reorder(argc, len(parameter))
         self.stack_offset = 0
@@ -322,7 +327,7 @@ class LambdaCompiler:
             if function == "if":
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%d_" % self.counter()
-                # evaluate if-expression
+                # evaluate if-condition
                 self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__true\n"
@@ -340,13 +345,19 @@ class LambdaCompiler:
                 self.text += "%s:\n" % (iflabel + "end")
                 return
 
+            elif function == "eval":
+                self.compiler.extern.add("__eval")
+                self.emit_call_expr(parameter[0])
+                self.text += "\tcall\t__eval\n"
+                return
+
             elif function == "quote":
                 # XXX
                 raise CompileError("quote not implemented yet")
 
         function_label, function_argc = self.compiler.get_function_label(function)
         if function_argc is not None and function_argc != len(parameter):
-            raise CompileError("%s: exects %d parameter" % (function, function_argc))
+            raise CompileError("%s: expects %d parameter but got %d" % (function, function_argc, len(parameter)))
 
         self.text += "\t; calculate %s\n" % (expr)
         self.text += "\tpush\trax\t\t\t; dummy\n"
@@ -356,7 +367,7 @@ class LambdaCompiler:
             self.text += "\tpush\trax\n"
             self.stack_offset += 1
 
-        # parameter count if needed XXX this has to go
+        # parameter count if called function is variadic
         if function_argc is None:
             self.text += "\tpush\tqword %d\n" % (len(parameter))
 
@@ -384,12 +395,6 @@ class LambdaCompiler:
             if exit:
                 raise CompileError("internal error - exit to rax with stack reference")
 
-        #elif type(expr) == LispSym:
-        #    label = self.compiler.get_string_label(expr)
-        #
-        #    self.text += "\tlea\trdi, [%s]\n" % (label)
-        #    self.text += "\t%s\t__mem_sym\n" % (action)
-
         elif type(expr) == LispStr:
             self.compiler.extern.add("__mem_string")
             label = self.compiler.get_string_label(expr)
@@ -406,6 +411,27 @@ class LambdaCompiler:
 
             if exit:
                 self.text += "\tret\n"
+
+        elif type(expr) == LispSym:
+            sym = expr
+            if sym not in self.compiler.env.symbols:
+                raise CompileError("%s: undefined symbol" % (sym))
+
+            value = self.compiler.env.symbols[sym]
+            self.emit_constant_to_rax(value, exit)
+
+        elif type(expr) == LispBuiltin or expr.is_head("λ"):
+
+            self.compiler.extern.add("__mem_lambda")
+            function_label, function_argc = self.compiler.get_function_label(expr)
+
+            # if function is variadic use 65536 to signal this
+            if function_argc is None:
+                function_argc = 65536
+
+            self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
+            self.text += "\tmov\trbx, %d\n" % (function_argc)
+            self.text += "\t%s\t__mem_lambda\n" % (action)
 
         else:
             raise CompileError("can't compile atom: %s" % (expr))

@@ -45,7 +45,6 @@ __mem_init:
 ;	rdi	address of new cell without any type information
 ;
 
-		global	__mem_alloc
 __mem_alloc:
 		mov	rdi, [next_free]
 
@@ -178,6 +177,31 @@ __mem_string:	test	rbx, rbx		; use shortcut if empty
 		jmp	.loop
 
 .out:		clc
+		ret
+
+
+;
+; allocate a cell holding a lambda
+;
+; input:
+;	RSI	pointer to lambda code
+;	RBX	number of parameters < 65536, rbx == 65536 for variadic
+;
+; output:
+;	RAX	cell holding the lambda
+;
+
+		global	__mem_lambda
+
+__mem_lambda:	call	__mem_alloc
+
+		mov	[rdi], rsi
+		mov	[rdi + 8], rsi
+
+		mov	al, TYPE_LAMBDA
+		shl	rax, SHIFT_TYPE
+		or	rax, rdi
+		clc
 		ret
 
 
