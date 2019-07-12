@@ -125,8 +125,8 @@ TABLE = {
         #'lt' : LispBuiltin(builtin_lt, 2),
         #'gt' : LispBuiltin(builtin_gt, 2),
         '+' : LispBuiltin(builtin_add, 2),
-        #'-' : LispBuiltin(builtin_sub, 2),
-        #'*' : LispBuiltin(builtin_mul, 2),
-        #'/' : LispBuiltin(builtin_div, 2),
+        '-' : LispBuiltin(builtin_sub, 2),
+        '*' : LispBuiltin(builtin_mul, 2),
+        '/' : LispBuiltin(builtin_div, 2),
     }
 
