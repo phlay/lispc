@@ -245,9 +245,6 @@ class LambdaCompiler:
         if type(function) == LispSym:
 
             if function == "if":
-                if len(parameter) != 3:
-                    raise CompileError("if expects exactly three parameter but got %d" % (len(parameter)))
-
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%d_false" % self.counter()
 
@@ -268,21 +265,14 @@ class LambdaCompiler:
                 return
 
             elif function == "eval":
-                if len(parameter) != 1:
-                    raise CompileError("eval expects exactly one parameter but got %d" % (len(parameter)))
-
                 self.compiler.extern.add("__eval")
                 self.emit_call_expr(parameter[0])
                 self.text += "\tjmp\t__eval\n"
                 return
 
             elif function == "quote":
-                if len(parameter) != 1:
-                    raise CompileError("quote expects exactly one parameter but got %d" % (len(parameter)))
-
                 self.emit_continue_expr(parameter[0].consify())
                 return
-
 
             elif function == "λ":
                 # XXX
@@ -336,9 +326,6 @@ class LambdaCompiler:
 
         if type(function) == LispSym:
             if function == "if":
-                if len(parameter) != 3:
-                    raise CompileError("if expects exactly three parameter but got %d" % (len(parameter)))
-
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%d_" % self.counter()
                 # evaluate if-condition
@@ -360,18 +347,12 @@ class LambdaCompiler:
                 return
 
             elif function == "eval":
-                if len(parameter) != 1:
-                    raise CompileError("eval expects exactly one parameter but got %d" % (len(parameter)))
-
                 self.compiler.extern.add("__eval")
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__eval\n"
                 return
 
             elif function == "quote":
-                if len(parameter) != 1:
-                    raise CompileError("quote expects exactly one parameter but got %d" % (len(parameter)))
-
                 self.emit_call_expr(parameter[0].consify())
                 return
 

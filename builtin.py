@@ -36,6 +36,8 @@ def builtin_cons(x, L):
 def builtin_list(*L):
     return LispList(L)
 
+def builtin_quote(x):
+    return x
 
 
 # Arithmetic
@@ -110,6 +112,7 @@ TABLE = {
         'println' : LispBuiltin(builtin_println, None, side=True),
         'cons' : LispBuiltin(builtin_cons, 2),
         'atom' : LispBuiltin(builtin_atom, 1),
+        'quote' : LispBuiltin(builtin_quote, 1),
         #'eq' : LispBuiltin(builtin_eq, 2),
         #'list' : LispBuiltin(builtin_list),
         #'mod' : LispBuiltin(builtin_mod, 2),
