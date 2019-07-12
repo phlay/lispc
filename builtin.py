@@ -121,12 +121,12 @@ TABLE = {
         'eval' : LispBuiltin(builtin_eval, 1),
         #'eq' : LispBuiltin(builtin_eq, 2),
         #'list' : LispBuiltin(builtin_list),
-        #'mod' : LispBuiltin(builtin_mod, 2),
         #'lt' : LispBuiltin(builtin_lt, 2),
         #'gt' : LispBuiltin(builtin_gt, 2),
         '+' : LispBuiltin(builtin_add, 2),
         '-' : LispBuiltin(builtin_sub, 2),
         '*' : LispBuiltin(builtin_mul, 2),
         '/' : LispBuiltin(builtin_div, 2),
+        'mod' : LispBuiltin(builtin_mod, 2),
     }
 

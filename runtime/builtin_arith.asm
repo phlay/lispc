@@ -64,8 +64,25 @@ __builtin_div:	pop	rax
 
 		xor	rdx, rdx
 		mov	rax, [rax]
-		mov	rbx, [rbx]
-		div	rbx
+		div	qword [rbx]
+		jmp	__mem_int
+.out:		ret
+
+
+
+		global	__builtin_mod
+		global	__builtin_mod.continue
+
+__builtin_mod:	pop	rax
+		mov	[rsp + 8*2], rax
+
+.continue:	call	pop_2_int
+		jc	.out
+
+		xor	rdx, rdx
+		mov	rax, [rax]
+		div	qword [rbx]
+		mov	rax, rdx
 		jmp	__mem_int
 .out:		ret
 
