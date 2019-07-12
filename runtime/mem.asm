@@ -185,7 +185,8 @@ __mem_string:	xor	rdi, rdi
 ;
 ; input:
 ;	RSI	pointer to lambda code
-;	RBX	number of parameters < 65536, rbx == 65536 for variadic
+;	RBX	number of parameters, < LAMBDA_VARIADIC
+;		(or equal to LAMBDA_VARIADIC for variadic function)
 ;
 ; output:
 ;	RAX	cell holding the lambda

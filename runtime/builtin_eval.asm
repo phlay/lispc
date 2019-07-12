@@ -102,7 +102,7 @@ eval_call:	mov	rdi, rsp		; save stack pointer in case of error
 		inc	rcx
 		jmp	.push_params
 
-.call:		cmp	r8, 65536
+.call:		cmp	r8, LAMBDA_VARIADIC
 		je	.out
 		cmp	rcx, r8
 		jne	.errout

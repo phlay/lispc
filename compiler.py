@@ -351,18 +351,17 @@ class LambdaCompiler:
 
             self.text += "\tjmp\t%s.continue\n" % (function_label)
 
-        # XXX should do a safty check on this
         self.stack_offset -= len(parameter)
 
 
 
     def emit_call_expr(self, expr):
 
+        #print("[DEBUG] emit_call_expr: %s" % (expr))
+
         if expr.is_atom():
             self.emit_constant_to_rax(expr)
             return
-
-        #print("[DEBUG] emit_call_expr: %s" % (expr))
 
         function = expr[0]
         parameter = expr[1:]
@@ -474,12 +473,10 @@ class LambdaCompiler:
         elif type(expr) == LispBuiltin or expr.is_head("λ"):
             function_label, function_argc = self.compiler.get_function_label(expr, sym)
 
-            # if function is variadic use 65536 to signal this
-            if function_argc is None:
-                function_argc = 65536               # XXX this should'nt be hardcoded!
-
             self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
-            if function_argc == 0:
+            if function_argc is None:
+                self.text += "\tmov\trbx, LAMBDA_VARIADIC\n"
+            elif function_argc == 0:
                 self.text += "\txor\trbx, rbx\n"
             else:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
@@ -491,11 +488,13 @@ class LambdaCompiler:
             if len(expr) == 0:
                 self.text += "\tmov\tal, TYPE_CONS\n"
                 self.text += "\tshl\trax, SHIFT_TYPE\n"
+                if exit:
+                    self.text += "\tret\n"
             else:
-                raise CompileError("%s: return of non empty lists are not yet supported" % (expr))
-
-            if exit:
-                self.text += "\tret\n"
+                if exit:
+                    self.emit_continue_expr(expr.consify())
+                else:
+                    self.emit_call_expr(expr.consify())
 
         else:
             raise CompileError("can't compile atom: %s" % (expr))
