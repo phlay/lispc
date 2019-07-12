@@ -79,11 +79,7 @@ class Environment:
 
                 # construct lambda
                 function = LispList([ LispSym("lambda"), lambda_parameter, lambda_body ])
-
-                self.symbols[symbol] = function
-
                 value = self.bake_lambda(function[1:])
-
                 self.symbols[symbol] = value
 
                 return value

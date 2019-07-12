@@ -13,12 +13,14 @@ class CompileError(LispError): pass
 
 class Compiler:
 
-    target_symbol = None
-    runtime_path = None
-    leave_asm_file = False
-
     def __init__(self, env):
         self.env = env
+        self.target_symbol = "main"
+        self.runtime_path = None
+        self.leave_asm_file = False
+
+        self.reset()
+
 
     def set_target_symbol(self, target):
         self.target_symbol = target
@@ -29,41 +31,37 @@ class Compiler:
     def set_leave_asm(self, leave):
         self.leave_asm_file = leave
 
-
-    def compile(self, target = None):
-        self._counter = 0
-
-        self.compiled_lambda = {}
-
+    def reset(self):
         self.extern = set()
-
+        self.compiled_lambda = {}
         self.string_cache = {}
         self.lambda_cache = {}
+        self.counter = 0
 
-        if self.target_symbol is None:
-            self.target_symbol = [ sym for sym in self.env.symbols if not sym.startswith("_") ]
-        elif type(target) != list:
-            self.target_symbol = [ self.target_symbol ]
 
-        for sym in self.target_symbol:
-            if sym not in self.env.symbols:
-                raise CompileError("%s: symbol not found" % (sym))
+    def compile(self, sym):
+        if sym not in self.env.symbols:
+            raise CompileError("%s: symbol not found" % (sym))
 
-            item = self.env.symbols[sym]
-            if item.is_head("λ"):
-                self.lambda_cache[str(item)] = sym
-                self.compiled_lambda[sym] = LambdaCompiler(self, item, sym)
+        item = self.env.symbols[sym]
+        if item.is_head("λ"):
+            self.lambda_cache[str(item)] = sym
+            self.compiled_lambda[sym] = LambdaCompiler(self, item, sym)
+        else:
+            raise CompileError("%s: not a function" % (sym))
 
 
     def get_assembly(self):
 
-        self.compile()
+        self.reset()
+        self.compile(self.target_symbol)
 
         result = ""
 
         for label in self.extern:
             result += "extern\t%s\n" % (label)
         result += "\n"
+
 
         result += "section .text\n\n"
         for c in self.compiled_lambda.values():
@@ -91,18 +89,31 @@ class Compiler:
 
         # try to compile it
         try:
-            result = subprocess.run(["nasm", "-f elf64", "-I", runtime_path, "-p runtime.inc", asm_file, "-o", obj_file], capture_output=True)
+            result = subprocess.run(["nasm",
+                                     "-o", obj_file,
+                                     "-f elf64",
+                                     "-I", runtime_path,
+                                     "-p runtime.inc",
+                                     asm_file], capture_output=True)
+
             if result.returncode != 0:
-                raise CompileError("nasm failed: \n%s" % (result.stderr.decode('utf8')))
+                raise CompileError("nasm failed: %s" %
+                        (result.stderr.decode('utf8')))
+
         except FileNotFoundError:
             raise CompileError("nasm not found")
 
 
         # finally try to link it
         try:
-            result = subprocess.run(["ld", "-o", output, obj_file, runtime_file ], capture_output=True)
+            result = subprocess.run(["ld",
+                                     "-o", output,
+                                     obj_file,
+                                     runtime_file ], capture_output=True)
+
             if result.returncode != 0:
-                raise CompileError("linker failed: \n%s" % (result.stderr.decode('utf8')))
+                raise CompileError("linker failed: \n%s" %
+                        (result.stderr.decode('utf8')))
 
         except FileNotFoundError:
             raise CompileError("ld not found")
@@ -117,17 +128,16 @@ class Compiler:
 
 
 
-    def counter(self):
-        result = self._counter
-        self._counter += 1
+    def get_unique(self):
+        result = "%06d" % self.counter
+        self.counter += 1
         return result
 
 
-    def get_function_label(self, expr):
-        sym = None
+    def get_function_label(self, expr, sym = None):
 
         # do we get an symbol? resolve it
-        if type(expr) == LispSym:
+        while type(expr) == LispSym:
             sym = expr
             if sym not in self.env.symbols:
                 raise CompileError("%s: undefined symbol" % (sym))
@@ -143,7 +153,7 @@ class Compiler:
 
             # invent a label if this is anonymous
             if sym is None:
-                label = "__lambda_%d" % (self.counter())
+                label = "__lambda_%s" % (self.get_unique())
             else:
                 label = sym
 
@@ -168,7 +178,7 @@ class Compiler:
         if string in self.string_cache:
             return self.string_cache[string]
 
-        label = "__string_%d" % (self.counter())
+        label = "__string_%s" % (self.get_unique())
         self.string_cache[string] = label
         return label
 
@@ -184,16 +194,16 @@ class LambdaCompiler:
         self.compiler = compiler
 
         self.label = label
-        self._counter = 0
+        self.counter = 0
         self.stack_offset = 0
         self.text = ""
 
         self.compile(expr)
 
 
-    def counter(self):
-        result = self._counter
-        self._counter += 1
+    def get_unique(self):
+        result = "%06d" % self.counter
+        self.counter += 1
         return result
 
 
@@ -262,18 +272,15 @@ class LambdaCompiler:
 
             if function == "if":
                 self.compiler.extern.add("__true")
-                iflabel = ".if_%d_false" % self.counter()
-
+                iflabel = ".if_%s_false" % self.get_unique()
                 # evaluate if-expression
                 self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel)
-
                 # true case
                 self.text += "\n"
                 self.emit_continue_expr(argc, parameter[1])
-
                 # false case
                 self.text += "\n"
                 self.text += "%s:\n" % (iflabel)
@@ -343,7 +350,7 @@ class LambdaCompiler:
         if type(function) == LispSym:
             if function == "if":
                 self.compiler.extern.add("__true")
-                iflabel = ".if_%d_" % self.counter()
+                iflabel = ".if_%s_" % self.get_unique()
                 # evaluate if-condition
                 self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
@@ -432,13 +439,7 @@ class LambdaCompiler:
             self.text += "\t%s\t__mem_string\n" % (action)
 
         elif type(expr) == LispBuiltin or expr.is_head("λ"):
-            self.compiler.extern.add("__mem_lambda")
-
-            # XXX this is not nice!
-            if sym is not None:
-                function_label, function_argc = self.compiler.get_function_label(sym)
-            else:
-                function_label, function_argc = self.compiler.get_function_label(expr)
+            function_label, function_argc = self.compiler.get_function_label(expr, sym)
 
             # if function is variadic use 65536 to signal this
             if function_argc is None:
@@ -450,6 +451,7 @@ class LambdaCompiler:
             else:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
 
+            self.compiler.extern.add("__mem_lambda")
             self.text += "\t%s\t__mem_lambda\n" % (action)
 
         elif type(expr) == LispList:
