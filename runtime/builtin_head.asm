@@ -1,4 +1,4 @@
-%include "cell.inc"
+%include "runtime.inc"
 
 		global	__builtin_head
 		global	__builtin_head.continue

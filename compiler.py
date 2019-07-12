@@ -12,11 +12,22 @@ class CompileError(LispError): pass
 
 
 class Compiler:
-    def __init__(self, env, target = None):
 
+    target_symbol = None
+    runtime_path = None
+    leave_asm_file = False
+
+    def __init__(self, env):
         self.env = env
 
-        self.compile(target)
+    def set_target_symbol(self, target):
+        self.target_symbol = target
+
+    def set_runtime(self, path):
+        self.runtime_path = path
+
+    def set_leave_asm(self, leave):
+        self.leave_asm_file = leave
 
 
     def compile(self, target = None):
@@ -29,12 +40,12 @@ class Compiler:
         self.string_cache = {}
         self.lambda_cache = {}
 
-        if target is None:
-            target = [ sym for sym in self.env.symbols if not sym.startswith("_") ]
+        if self.target_symbol is None:
+            self.target_symbol = [ sym for sym in self.env.symbols if not sym.startswith("_") ]
         elif type(target) != list:
-            target = [ target ]
+            self.target_symbol = [ self.target_symbol ]
 
-        for sym in target:
+        for sym in self.target_symbol:
             if sym not in self.env.symbols:
                 raise CompileError("%s: symbol not found" % (sym))
 
@@ -43,43 +54,10 @@ class Compiler:
                 self.lambda_cache[str(item)] = sym
                 self.compiled_lambda[sym] = LambdaCompiler(self, item, sym)
 
-    def build(self, output, leave_asm=False):
-        asm_name = output + ".asm"
-        obj_name = output + ".o"
-
-        # write assembly file
-        with open(asm_name, "wb") as f:
-            f.write(self.get_assembly().encode('utf8'))
-
-        # try to compile it
-        try:
-            result = subprocess.run(["nasm", "-f elf64", asm_name, "-o", obj_name], capture_output=True)
-            if result.returncode != 0:
-                raise CompileError("nasm failed: \n%s" % (result.stderr.decode('utf8')))
-        except FileNotFoundError:
-            raise CompileError("nasm not found")
-
-
-        # finally try to link it
-        try:
-            result = subprocess.run(["ld", "-o", output, obj_name, "runtime/runtime.a" ], capture_output=True)
-            if result.returncode != 0:
-                raise CompileError("linker failed: \n%s" % (result.stderr.decode('utf8')))
-
-        except FileNotFoundError:
-            raise CompileError("ld not found")
-
-        # remove assembler and object file
-        try:
-            if not leave_asm:
-                os.unlink(asm_name)
-            os.unlink(obj_name)
-        except FileNotFoundError:
-            pass    # whatever
-
-
 
     def get_assembly(self):
+
+        self.compile()
 
         result = ""
 
@@ -99,6 +77,44 @@ class Compiler:
                 result += '%s:\tdb "%s"\n' % (label, string)
 
         return result
+
+
+    def build(self, output):
+        runtime_path = os.path.expanduser(self.runtime_path) + "/"
+        runtime_file = runtime_path + "runtime.a"
+        asm_file = output + ".asm"
+        obj_file = output + ".o"
+
+        # write assembly file
+        with open(asm_file, "wb") as f:
+            f.write(self.get_assembly().encode('utf8'))
+
+        # try to compile it
+        try:
+            result = subprocess.run(["nasm", "-f elf64", "-I", runtime_path, "-p runtime.inc", asm_file, "-o", obj_file], capture_output=True)
+            if result.returncode != 0:
+                raise CompileError("nasm failed: \n%s" % (result.stderr.decode('utf8')))
+        except FileNotFoundError:
+            raise CompileError("nasm not found")
+
+
+        # finally try to link it
+        try:
+            result = subprocess.run(["ld", "-o", output, obj_file, runtime_file ], capture_output=True)
+            if result.returncode != 0:
+                raise CompileError("linker failed: \n%s" % (result.stderr.decode('utf8')))
+
+        except FileNotFoundError:
+            raise CompileError("ld not found")
+
+        # remove assembler and object file
+        try:
+            if not self.leave_asm_file:
+                os.unlink(asm_file)
+            os.unlink(obj_file)
+        except FileNotFoundError:
+            pass    # whatever
+
 
 
     def counter(self):
@@ -438,8 +454,8 @@ class LambdaCompiler:
 
         elif type(expr) == LispList:
             if len(expr) == 0:
-                self.text += "\tmov\tal, 1\n"       # XXX this should'nt be hardcoded!
-                self.text += "\tshl\trax, 59\n"
+                self.text += "\tmov\tal, TYPE_CONS\n"
+                self.text += "\tshl\trax, SHIFT_TYPE\n"
             else:
                 raise CompileError("%s: return of non empty lists are not yet supported" % (expr))
 

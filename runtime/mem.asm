@@ -1,7 +1,6 @@
+%include "runtime.inc"
 %include "syscall.inc"
-
 %include "panic.inc"
-%include "cell.inc"
 
 
 section .text

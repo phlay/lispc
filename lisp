@@ -1,25 +1,43 @@
 #!/usr/bin/python3
 
 import sys
+import os
 import argparse
+import configparser
 
 import environment
 import compiler
 from lisp import LispError
 
 
+DEFAULT_CONFIG_PATH = "~/.lisp.ini"
+DEFAULT_RUNTIME_PATH = "runtime"
+
+
 # parse arguments
 #
 parser = argparse.ArgumentParser(description="lisp x86_64")
-parser.add_argument("files", metavar="file", nargs='*', help="lisp files to load")
-parser.add_argument("-i", dest="interactive", help="interactive mode", action="store_true")
-parser.add_argument("-s", dest="symbol", help="start symbol, default is main", default="main")
-parser.add_argument("-c", dest="compile", help="compile", action="store_true")
-parser.add_argument("-o", dest="output", help="compilation output file", default="a.out")
-parser.add_argument("-a", dest="leave_asm", help="don't delete assembly file after compiling", action="store_true")
-parser.add_argument("-p", dest="print", help="give assembly listing to stdout", action="store_true")
+parser.add_argument("files", metavar="file", nargs='*',
+                    help="lisp files to load")
+parser.add_argument("-i", dest="interactive", action="store_true",
+                    help="interactive mode")
+parser.add_argument("-s", dest="symbol", default="main",
+                    help="start symbol, default is main")
+parser.add_argument("-c", dest="compile", action="store_true",
+                    help="compile files to executable")
+parser.add_argument("-o", dest="output", default="a.out",
+                    help="compilation output file")
+parser.add_argument("-a", dest="leave_asm", action="store_true",
+                    help="don't delete assembly file after compiling")
+parser.add_argument("-p", dest="print", action="store_true",
+                    help="give assembly listing to stdout")
 
 args = parser.parse_args()
+
+# parse config file
+#
+conf = configparser.ConfigParser()
+conf.read(os.path.expanduser(DEFAULT_CONFIG_PATH))
 
 
 # create an environment and load files into it
@@ -44,12 +62,17 @@ for fn in args.files:
 
 if args.compile or args.print:
     try:
-        comp = compiler.Compiler(env, target=args.symbol)
+        comp = compiler.Compiler(env)
+        comp.set_target_symbol(args.symbol)
+        comp.set_leave_asm(args.leave_asm)
+        comp.set_runtime(conf.get('compiler',
+                                  'runtime',
+                                  fallback=DEFAULT_RUNTIME_PATH))
 
         if args.print:
             sys.stdout.write(comp.get_assembly())
         else:
-            comp.build(args.output, leave_asm=args.leave_asm)
+            comp.build(args.output)
 
     except LispError as e:
         print('Error: %s' % (e))

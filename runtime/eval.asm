@@ -1,4 +1,4 @@
-%include "cell.inc"
+%include "runtime.inc"
 
 extern __builtin_println
 

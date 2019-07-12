@@ -1,4 +1,4 @@
-%include "cell.inc"
+%include "runtime.inc"
 
 ;
 ; checks if input cell is true

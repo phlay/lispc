@@ -1,5 +1,5 @@
+%include "runtime.inc"
 %include "syscall.inc"
-%include "cell.inc"
 %include "mem.inc"
 %include "panic.inc"
 

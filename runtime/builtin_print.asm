@@ -1,7 +1,7 @@
+%include "runtime.inc"
 %include "printnum.inc"
 %include "puts.inc"
 %include "putc.inc"
-%include "cell.inc"
 
 
 section .text

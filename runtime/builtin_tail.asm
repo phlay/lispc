@@ -1,4 +1,4 @@
-%include "cell.inc"
+%include "runtime.inc"
 
 		global	__builtin_tail
 		global	__builtin_tail.continue

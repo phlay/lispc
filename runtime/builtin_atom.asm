@@ -1,4 +1,4 @@
-%include "cell.inc"
+%include "runtime.inc"
 %include "mem.inc"
 
 		global	__builtin_atom
