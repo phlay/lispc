@@ -462,6 +462,12 @@ class LambdaCompiler:
             if exit:
                 raise CompileError("internal error - exit to rax with stack reference")
 
+        elif type(expr) == LispTrue:
+            self.text += "\tmov\tal, TYPE_TRUE\n"
+            self.text += "\tshl\trax, SHIFT_TYPE\n"
+            if exit:
+                self.text += "\tret\n"
+
         elif type(expr) == LispStr:
             self.compiler.extern.add("__mem_string")
             label = self.compiler.get_string_label(expr)
@@ -486,8 +492,7 @@ class LambdaCompiler:
 
         elif type(expr) == LispList:
             if len(expr) == 0:
-                self.text += "\tmov\tal, TYPE_CONS\n"
-                self.text += "\tshl\trax, SHIFT_TYPE\n"
+                self.text += "\txor\trax, rax\n"
                 if exit:
                     self.text += "\tret\n"
             else:

@@ -1,33 +1,26 @@
 %include "runtime.inc"
 
+section .text
+
 ;
-; checks if input cell is true
+; checks if input is true
 ;
 ; input:
 ;	RAX	input cell
 ;
 ; output:
-;
-;	true  := carry flag clear
-;	false := carry flag set
+;	CF	true iff CF=0
 ;
 		global	__true
 
 __true:		mov	rdx, rax
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
-		and	rax, rbp
+		cmp	dl, TYPE_TRUE		; check for 'true' symbol
+		je	.true
+		test	rax, rbp		; otherwise NIL means false
 		jz	.false
-
-		cmp	dl, TYPE_INT
-		jne	.true			; all other types are 'true'
-
-		;; we have an int, check it
-		mov	rbx, [rax]
-		test	rbx, rbx
-		jz	.false
-
-.true:		clc
+.true:		clc				; everthing else is true again
 		ret
 .false:		stc
 		ret

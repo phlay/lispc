@@ -94,9 +94,6 @@ class LispRef(int, LispObj):
 
 
 class LispInt(int, LispObj):
-    def is_true(self):
-        return self != 0
-
     def is_executeable(self):
         return False
 
@@ -112,6 +109,17 @@ class LispStr(str, LispObj):
 
     def is_executeable(self):
         return False
+
+    def is_true(self):
+        return len(self) > 0
+
+class LispTrue(LispObj):
+
+    def __repr__(self):
+        return '#T'
+
+    def __str__(self):
+        return '#T'
 
 
 class LispBuiltin(LispObj):
@@ -130,6 +138,3 @@ class LispBuiltin(LispObj):
 
     def is_executeable(self):
         return True
-
-
-NIL = LispList([])

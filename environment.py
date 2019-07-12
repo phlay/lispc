@@ -163,7 +163,7 @@ class Environment:
         if len(parameter) != 3:
             raise EvalError('if expects exactly 3 parameters')
 
-        if self.evaluate(parameter[0], stack, local):
+        if self.evaluate(parameter[0], stack, local).is_true():
             return self.evaluate(parameter[1], stack, local)
         else:
             return self.evaluate(parameter[2], stack, local)

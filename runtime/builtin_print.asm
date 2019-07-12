@@ -70,14 +70,20 @@ print_cell:	mov	rdx, r8			; dl <- type(r8)
 
 		;test	dl, dl
 		;jz	print_ptr
-		test	dl, dl
+		cmp	dl, TYPE_STR		; print types with special
+		je	print_string		; NILs first
+		cmp	dl, TYPE_TRUE
+		je	print_true
+
+		test	r8, r8			; now handle NIL
+		jz	print_nil
+		test	dl, dl			; print-str after NIL check
 		jz	print_cstr
+
 		cmp	dl, TYPE_CONS
 		je	print_cons
 		cmp	dl, TYPE_INT
 		je	print_int
-		cmp	dl, TYPE_STR
-		je	print_string
 		cmp	dl, TYPE_LAMBDA
 		je	print_lambda
 
@@ -97,10 +103,18 @@ print_cstr:	mov	rsi, r8
 		clc
 		ret
 
-print_cons:	test	r8, r8
-		jz	.nil
+print_true:	mov	rsi, msg_true
+		call	__puts
+		clc
+		ret
 
-		mov	rsi, char_lb
+print_nil:	mov	rsi, msg_nil
+		call	__puts
+		clc
+		ret
+
+
+print_cons:	mov	rsi, char_lb
 		call	__putc
 		xor	al, al			; set al to 1 to print
 		inc	al			; "" around strings
@@ -131,12 +145,6 @@ print_cons:	test	r8, r8
 		call	__putc
 		clc
 		ret
-
-.nil:		mov	rsi, msg_nil
-		call	__puts
-		clc
-		ret
-
 
 
 print_int:	mov	rax, [r8]		; rax <- left(r8)
@@ -214,6 +222,7 @@ msg_hex		db "0x", 0
 msg_lambda	db "(λ ", 0
 msg_nl		db `\n`, 0
 msg_nil		db "NIL", 0
+msg_true	db "#T", 0
 char_lb		db '('
 char_rb		db ')'
 char_dot	db '.'

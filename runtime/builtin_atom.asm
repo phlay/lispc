@@ -16,12 +16,12 @@ __builtin_atom:	pop	rax
 		cmp	al, TYPE_CONS
 		je	.false
 
-.true:		xor	rax, rax
-		inc	rax
-		jmp	__mem_int
+.true:		mov	al, TYPE_TRUE
+		shl	rax, SHIFT_TYPE
+		ret
 
 .false:		xor	rax, rax
-		jmp	__mem_int
+		ret
 
 
 

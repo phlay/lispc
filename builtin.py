@@ -11,10 +11,16 @@ class BuiltinError(LispError): pass
 # Basics
 #
 def builtin_atom(x):
-    return x.is_atom()
+    if x.is_atom():
+        return LispTrue()
+    else:
+        return LispList()
 
 def builtin_eq(a, b):
-    return a == b
+    if a == b:
+        return LispTrue()
+    else:
+        return LispList()
 
 def builtin_head(L):
     if L.is_atom():
@@ -96,18 +102,38 @@ def builtin_gt(x, y):
 
     return LispInt(x > y)
 
+# Bool
+#
+def builtin_not(x):
+    if not x.is_true():
+        return LispTrue()
+    else:
+        return LispList()
+
+def builtin_and(x, y):
+    if x.is_true() and y.is_true():
+        return LispTrue()
+    else:
+        return LispList()
+
+def builtin_or(x, y):
+    if x.is_true() or y.is_true():
+        return LispTrue()
+    else:
+        return LispList()
+
 
 # Input / Output
 #
 def builtin_print(*param):
     for p in param:
         print(p, end='')
-    return NIL
+    return LispList()
 
 def builtin_println(*param):
     builtin_print(*param)
     print()
-    return NIL
+    return LispList()
 
 
 TABLE = {
@@ -128,5 +154,8 @@ TABLE = {
         '*' : LispBuiltin(builtin_mul, 2),
         '/' : LispBuiltin(builtin_div, 2),
         'mod' : LispBuiltin(builtin_mod, 2),
+        'not' : LispBuiltin(builtin_not, 1),
+        'and' : LispBuiltin(builtin_and, 2),
+        'or' : LispBuiltin(builtin_or, 2),
     }
 

@@ -13,6 +13,8 @@ tokens = (
         'LPAR',
         'RPAR',
         'QUOTE',
+        'TRUE',
+        'NIL',
         'SYM',
         'INT',
         'STR',
@@ -29,6 +31,16 @@ t_ignore_COMMENT = r';.*'
 def t_SYM(t):
     r'[a-zA-Z\+\-\*\/_]\w*'
     t.value = LispSym(t.value)
+    return t
+
+def t_TRUE(t):
+    r'\#(T|t)'
+    t.value = LispTrue()
+    return t
+
+def t_NIL(t):
+    r'\#[Nn][Ii][Ll]'
+    t.value = LispList([])
     return t
 
 def t_INT(t):
@@ -60,6 +72,10 @@ def p_item_sym(p):
     'item : SYM'
     p[0] = p[1]
 
+def p_item_true(p):
+    'item : TRUE'
+    p[0] = p[1]
+
 def p_item_int(p):
     'item : INT'
     p[0] = p[1]
@@ -87,6 +103,10 @@ def p_sequence(p):
 def p_list_empty(p):
     'list : LPAR RPAR'
     p[0] = LispList([])
+
+def p_list_nil(p):
+    'list : NIL'
+    p[0] = p[1]
 
 def p_list(p):
     'list : LPAR sequence RPAR'
