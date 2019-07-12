@@ -9,7 +9,9 @@ section .text
 
 ; prints it's parameter in nice form
 ;
-; stack: dummy, p1, ..., pk, k
+; input:
+;	rcx	k
+;	stack	dummy, p1, ..., pk
 ;
 ; where p1, ..., pk are the cell-addresses to be printed
 ;
@@ -18,12 +20,10 @@ section .text
 		global	__builtin_print.continue
 
 __builtin_print:
-		pop	rax			; extended prologue
-		pop	rbx
-		mov	[rsp + 8*rbx], rax
-		push	rbx
+		pop	rax
+		mov	[rsp + 8*rcx], rax
 
-.continue:	pop	r9			; r9 <- k
+.continue:	mov	r9, rcx			; r9 <- k
 		lea	r10, [rsp + 8*r9]	; r10 <- &ret = &p1 + 8
 		clc
 
@@ -46,15 +46,11 @@ __builtin_print:
 		global	__builtin_println.continue
 
 __builtin_println:
-		pop	rax			; extended prologue
-		pop	rbx
-		mov	[rsp + 8*rbx], rax
-		push	rbx
+		pop	rax
+		mov	[rsp + 8*rcx], rax
 
-.continue:	pop	rbx
-		inc	rbx
-		push	msg_nl
-		push	rbx
+.continue:	push	msg_nl
+		inc	rcx
 		jmp	__builtin_print.continue
 
 

@@ -1,9 +1,22 @@
 %include "runtime.inc"
 
-extern __builtin_println
-
 
 section .text
+
+;
+; builtin-wrapper for __eval below
+;
+
+		global	__builtin_eval
+		global	__builtin_eval.continue
+
+__builtin_eval:	pop	rax
+		mov	[rsp + 8], rax
+
+.continue:	pop	rax
+		jmp	__eval
+
+
 
 ;
 ; evaluates parameter
@@ -22,8 +35,8 @@ __eval:
 		;
 		;push	rax	; dummy
 		;push	msg_eval
-		;push	rax	; parameter
-		;push	qword 2
+		;push	rax
+		;mov	rcx, 2
 		;call	__builtin_println
 		;
 		;pop	rax
@@ -90,19 +103,18 @@ eval_call:	mov	rdi, rsp		; save stack pointer in case of error
 		jmp	.push_params
 
 .call:		cmp	r8, 65536
-		jb	.check
+		je	.out
+		cmp	rcx, r8
+		jne	.errout
 
-		push	rcx			; push parameter count
 .out:		push	rbx			; continue with our function
 		ret
-
-.check:		cmp	rcx, r8
-		je	.out
 
 .errout:	mov	rsp, rdi
 		stc
 		ret
 
-section .data
-
-msg_eval		db "eval: ", 0
+;
+;section .data
+;
+;msg_eval		db "eval: ", 0

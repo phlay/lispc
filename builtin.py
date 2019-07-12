@@ -3,6 +3,7 @@
 #
 
 from lisp import *
+import __main__
 
 class BuiltinError(LispError): pass
 
@@ -38,6 +39,10 @@ def builtin_list(*L):
 
 def builtin_quote(x):
     return x
+
+def builtin_eval(x):
+    # evaluate in main environment - this is a bit ugly
+    return __main__.env.evaluate(x)
 
 
 # Arithmetic
@@ -113,6 +118,7 @@ TABLE = {
         'cons' : LispBuiltin(builtin_cons, 2),
         'atom' : LispBuiltin(builtin_atom, 1),
         'quote' : LispBuiltin(builtin_quote, 1),
+        'eval' : LispBuiltin(builtin_eval, 1),
         #'eq' : LispBuiltin(builtin_eq, 2),
         #'list' : LispBuiltin(builtin_list),
         #'mod' : LispBuiltin(builtin_mod, 2),

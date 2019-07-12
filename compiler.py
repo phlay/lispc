@@ -66,7 +66,7 @@ class Compiler:
         result += "section .text\n\n"
         for c in self.compiled_lambda.values():
             result += c.text
-            result += "\n"
+            result += "\n\n"
 
         if self.string_cache:
             result += "section .data\n\n"
@@ -188,7 +188,7 @@ class Compiler:
 
 class LambdaCompiler:
 
-    REORDER_REGS = ["rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14" ]
+    REORDER_REGS = [ "rbx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14" ]
 
     def __init__(self, compiler, expr, label):
         self.compiler = compiler
@@ -255,8 +255,8 @@ class LambdaCompiler:
     def emit_continue_expr(self, argc, expr):
         if expr.is_atom():
             if type(expr) == LispRef:
-                self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % (self.stack_offset + int(expr) - 1,
-                                                                   expr)
+                self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
+                        (self.stack_offset + int(expr) - 1, expr)
                 self.emit_parameter_reorder(argc, 0)
                 self.text += "\tret\n"
             else:
@@ -301,16 +301,13 @@ class LambdaCompiler:
                 # XXX
                 raise CompileError("can't yet return closures")
 
-
-        function_label, function_argc = self.compiler.get_function_label(function)
-        if function_argc is not None and function_argc != len(parameter):
-            raise CompileError("%s: expects %d parameter but got %d" % (function, function_argc, len(parameter)))
-
-        # safe the number of parameter, since we might optimize some away
-        # but we need this information later
+        #
+        # check for parameter-takeover case: function we call
+        # directly uses our parameters on stack.
+        # parameter_count still holds the original number of
+        # parameter the function gets.
+        #
         parameter_count = len(parameter)
-
-        # check for parameter-takeover case
         while argc > 0 and len(parameter) > 0:
             first = parameter[0]
             if type(first) != LispRef or int(first) != argc:
@@ -326,14 +323,37 @@ class LambdaCompiler:
             self.stack_offset += 1
             self.text += "\n"
 
-        # parameter count if called function is variadic
-        if function_argc is None:
-            self.text += "\tpush\tqword %d\n" % (parameter_count)
+        #
+        # now we call our function, there are two cases
+        #
+        #  1) Dynamic Function, given by a local reference
+        #  2) Static Funcion, either by symbol or explicitly by lambda
+        #
+        if type(function) == LispRef:
+            self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
+                    (self.stack_offset + int(function) - 1)
+            self.emit_parameter_reorder(argc, len(parameter))
+            self.text += "\tmov\trcx, %d\n" % (parameter_count)
+            self.text += "\tjmp\t__call.continue\n"
+            self.compiler.extern.add("__call.continue")
 
-        self.emit_parameter_reorder(argc, len(parameter))
-        self.stack_offset = 0
+        else:
+            function_label, function_argc = self.compiler.get_function_label(function)
+            if function_argc is not None and function_argc != parameter_count:
+                raise CompileError("%s: expects %d parameter but got %d"
+                        % (function, function_argc, parameter_count))
 
-        self.text += "\tjmp\t%s.continue\n" % (function_label)
+            self.emit_parameter_reorder(argc, len(parameter))
+
+            # if variadic, inform our function how many parameter it is receiving
+            if function_argc is None:
+                self.text += "\tmov\trcx, %d\n" % (parameter_count)
+
+            self.text += "\tjmp\t%s.continue\n" % (function_label)
+
+        # XXX should do a safty check on this
+        self.stack_offset -= len(parameter)
+
 
 
     def emit_call_expr(self, expr):
@@ -379,11 +399,7 @@ class LambdaCompiler:
                 self.emit_call_expr(parameter[0].consify())
                 return
 
-
-        function_label, function_argc = self.compiler.get_function_label(function)
-        if function_argc is not None and function_argc != len(parameter):
-            raise CompileError("%s: expects %d parameter but got %d" % (function, function_argc, len(parameter)))
-
+        # push parameter for function call
         self.text += "\t; calculate %s\n" % (expr)
         self.text += "\tpush\trax\t\t\t; dummy\n"
         self.stack_offset += 1
@@ -392,11 +408,28 @@ class LambdaCompiler:
             self.text += "\tpush\trax\n"
             self.stack_offset += 1
 
-        # parameter count if called function is variadic
-        if function_argc is None:
-            self.text += "\tpush\tqword %d\n" % (len(parameter))
+        #
+        # Like above, we can have dynamic or static functions
+        #
+        if type(function) == LispRef:
+            self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
+                    (self.stack_offset + int(function) - 1)
+            self.text += "\tmov\trcx, %d\n" % (len(parameter))
+            self.text += "\tcall\t__call\n"
+            self.compiler.extern.add("__call")
 
-        self.text += "\tcall\t%s\n" % (function_label)
+        else:
+            function_label, function_argc = self.compiler.get_function_label(function)
+            if function_argc is not None and function_argc != len(parameter):
+                raise CompileError("%s: expects %d parameter but got %d" %
+                        (function, function_argc, len(parameter)))
+
+            # parameter count if called function is variadic
+            if function_argc is None:
+                self.text += "\tmov\trcx, %d\n" % (len(parameter))
+
+            self.text += "\tcall\t%s\n" % (function_label)
+
         self.stack_offset -= len(parameter) + 1
 
 
