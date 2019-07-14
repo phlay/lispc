@@ -78,7 +78,9 @@ class Environment:
                     raise EvalError("defun expects list of symbols as second parameter")
 
                 # construct lambda
-                function = LispList([ LispSym("lambda"), lambda_parameter, lambda_body ])
+                function = LispList([ LispSym("lambda"),
+                                      lambda_parameter,
+                                      lambda_body ])
                 value = self.bake_lambda(function[1:])
                 self.symbols[symbol] = value
 
@@ -142,21 +144,24 @@ class Environment:
 
         if type(evalfun) == LispBuiltin:
             if evalfun.argc is not None and evalfun.argc != len(evalpar):
-                raise EvalError("%s: expects %d parameter, got %d" % (function, evalfun.argc, len(evalpar)))
+                raise EvalError("%s: expects %d parameter, got %d"
+                        % (function, evalfun.argc, len(evalpar)))
 
             try:
                 return evalfun.function(*evalpar)
             except TypeError:
-                raise EvalError("%s: illegal number of parameter to builtin function" % (function))
+                raise EvalError("%s: illegal number of parameter to builtin function"
+                        % (function))
 
         elif evalfun.is_head("λ"):
             if evalfun[1] != len(evalpar):
-                raise EvalError("%s: expects %d parameter, got %d" % (function, evalfun[1], len(evalpar)))
+                raise EvalError("%s: expects %d parameter, got %d" %
+                        (function, evalfun[1], len(evalpar)))
 
             return self.eval_apply_lambda(evalfun, evalpar, stack, local)
 
         else:
-            raise EvalError("list is not executeable: %s" % (evalfun))
+            raise EvalError("list is not executable: %s" % (evalfun))
 
 
     def eval_if(self, parameter, stack, local):
@@ -173,8 +178,8 @@ class Environment:
         if len(parameter) != 1:
             raise EvalError('eval expects exactly one parameter')
 
-        return self.evaluate(self.evaluate(parameter[0], stack, local), stack, local)
-
+        return self.evaluate(self.evaluate(parameter[0], stack, local),
+                             stack, local)
 
 
     def eval_apply_lambda(self, function, parameter, stack, local):
@@ -182,7 +187,8 @@ class Environment:
         lambda_body = function[2]
 
         if len(parameter) != lambda_argc:
-            raise EvalError("lambda needs %d parameter but got %d" % (lambda_argc, len(parameter)))
+            raise EvalError("lambda needs %d parameter but got %d"
+                    % (lambda_argc, len(parameter)))
 
         return self.evaluate(lambda_body, stack + [None] + parameter, local)
 
@@ -205,10 +211,12 @@ class Environment:
 
         # check lambda parameter for double symbols
         if len(lambda_parameter) != len(set(lambda_parameter)):
-            raise EvalError("%s: parameter symbols are not unique" % (lambda_parameter))
+            raise EvalError("%s: parameter symbols are not unique"
+                    % (lambda_parameter))
 
 
-        compiled_body = self.bake_expr(lambda_body, stack, local + [""] + lambda_parameter)
+        compiled_body = self.bake_expr(lambda_body, stack,
+                                       local + [""] + lambda_parameter)
 
         return LispList( [LispSym("λ"), len(lambda_parameter), compiled_body] )
 
@@ -223,7 +231,8 @@ class Environment:
         lambda_body = parameter[1]
 
         # recompile lambda with dummy parameter on local symbol table
-        compiled_body = self.bake_expr(lambda_body, stack, local + (lambda_argc+1)*[''])
+        compiled_body = self.bake_expr(lambda_body, stack,
+                                       local + (lambda_argc+1)*[''])
 
         return LispList( [LispSym("λ"), lambda_argc, compiled_body] )
 
@@ -271,7 +280,7 @@ class Environment:
         compiled_expr = LispList([ self.bake_expr(p, stack, local) for p in expr ])
         compiled_function = compiled_expr.head()
 
-        if not compiled_function.is_executeable():
+        if not compiled_function.is_executable():
             raise EvalError("function is not executable: %s" % (compiled_function))
 
         return compiled_expr

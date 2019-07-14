@@ -12,7 +12,7 @@ class LispObj:
     def is_head(self, name):
         return False
 
-    def is_executeable(self):
+    def is_executable(self):
         return False
 
     def head(self):
@@ -58,8 +58,18 @@ class LispList(list, LispObj):
     def is_atom(self):
         return len(self) == 0
 
-    def is_executeable(self):
-        return self.is_head("λ")
+    def is_executable(self):
+        if len(self) == 0:
+            return True
+
+        head = self.head()
+        if type(head) == LispSym and head == "λ":
+            return True
+
+        return head.is_executable()
+
+
+
 
     def is_head(self, name):
         if len(self) > 0 and type(self[0]) == LispSym and self[0] == name:
@@ -81,7 +91,7 @@ class LispSym(str, LispObj):
     def __repr__(self):
         return str(self)
 
-    def is_executeable(self):
+    def is_executable(self):
         return True
 
 
@@ -89,7 +99,7 @@ class LispRef(int, LispObj):
     def __repr__(self):
         return str(self)
 
-    def is_executeable(self):
+    def is_executable(self):
         return True
 
     def __str__(self):
@@ -97,12 +107,12 @@ class LispRef(int, LispObj):
 
 
 class LispInt(int, LispObj):
-    def is_executeable(self):
+    def is_executable(self):
         return False
 
 
 class LispReal(float, LispObj):
-    def is_executeable(self):
+    def is_executable(self):
         return False
 
 
@@ -110,7 +120,7 @@ class LispStr(str, LispObj):
     def __repr__(self):
         return '"' + str(self) + '"'
 
-    def is_executeable(self):
+    def is_executable(self):
         return False
 
     def is_true(self):
@@ -139,5 +149,5 @@ class LispBuiltin(LispObj):
     def __str__(self):
         return '<' + self.name + '>'
 
-    def is_executeable(self):
+    def is_executable(self):
         return True

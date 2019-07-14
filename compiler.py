@@ -170,7 +170,7 @@ class Compiler:
             return expr.extern, expr.argc
 
 
-        raise CompileError("%s: not executeable" % (expr))
+        raise CompileError("%s: not executable" % (expr))
 
 
 
@@ -188,7 +188,9 @@ class Compiler:
 
 class LambdaCompiler:
 
-    REORDER_REGS = [ "rbx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14" ]
+    REORDER_REGS = [ "rbx", "rdx", "rsi", "rdi", "r8", "r9",
+                     "r10", "r11", "r12", "r13", "r14" ]
+
 
     def __init__(self, compiler, expr, label):
         self.compiler = compiler
@@ -274,7 +276,7 @@ class LambdaCompiler:
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%s_false" % self.get_unique()
                 # evaluate if-expression
-                self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
+                #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel)
@@ -371,7 +373,7 @@ class LambdaCompiler:
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%s_" % self.get_unique()
                 # evaluate if-condition
-                self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
+                #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
                 self.emit_call_expr(parameter[0])
                 self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel+"false")
@@ -399,7 +401,7 @@ class LambdaCompiler:
                 return
 
         # push parameter for function call
-        self.text += "\t; calculate %s\n" % (expr)
+        #self.text += "\t; calculate %s\n" % (expr)
         self.text += "\tpush\trax\t\t\t; dummy\n"
         self.stack_offset += 1
         for p in parameter:
