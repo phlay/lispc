@@ -93,14 +93,39 @@ def builtin_lt(x, y):
     if type(x) != LispInt or type(y) != LispInt:
         raise BuiltinError('builtin_lt: illegal parameter type')
 
-    return LispInt(x < y)
+    if x < y:
+        return LispTrue()
+    else:
+        return LispList()
+
+def builtin_le(x, y):
+    if type(x) != LispInt or type(y) != LispInt:
+        raise BuiltinError('builtin_lt: illegal parameter type')
+
+    if x <= y:
+        return LispTrue()
+    else:
+        return LispList()
 
 
 def builtin_gt(x, y):
     if type(x) != LispInt or type(y) != LispInt:
         raise BuiltinError('builtin_gt: illegal parameter type')
 
-    return LispInt(x > y)
+    if x > y:
+        return LispTrue()
+    else:
+        return LispList()
+
+def builtin_ge(x, y):
+    if type(x) != LispInt or type(y) != LispInt:
+        raise BuiltinError('builtin_gt: illegal parameter type')
+
+    if x >= y:
+        return LispTrue()
+    else:
+        return LispList()
+
 
 # Bool
 #
@@ -143,12 +168,14 @@ TABLE = {
         'println' : LispBuiltin(builtin_println, None, side=True),
         'cons' : LispBuiltin(builtin_cons, 2),
         'atom' : LispBuiltin(builtin_atom, 1),
+        #'list' : LispBuiltin(builtin_list),
         'quote' : LispBuiltin(builtin_quote, 1),
         'eval' : LispBuiltin(builtin_eval, 1),
-        #'eq' : LispBuiltin(builtin_eq, 2),
-        #'list' : LispBuiltin(builtin_list),
-        #'lt' : LispBuiltin(builtin_lt, 2),
-        #'gt' : LispBuiltin(builtin_gt, 2),
+        'eq' : LispBuiltin(builtin_eq, 2),
+        'lt' : LispBuiltin(builtin_lt, 2),
+        'le' : LispBuiltin(builtin_le, 2),
+        'gt' : LispBuiltin(builtin_gt, 2),
+        'ge' : LispBuiltin(builtin_ge, 2),
         '+' : LispBuiltin(builtin_add, 2),
         '-' : LispBuiltin(builtin_sub, 2),
         '*' : LispBuiltin(builtin_mul, 2),

@@ -88,6 +88,84 @@ __builtin_mod:	pop	rax
 
 
 
+		global	__builtin_eq
+		global	__builtin_eq.continue
+
+__builtin_eq:	pop	rax
+		mov	[rsp + 2*8], rax
+
+.continue:	call	pop_2_int
+		jc	return_false
+		mov	rax, [rax]
+		cmp	rax, [rbx]
+		je	return_true
+
+return_false:	xor	rax, rax
+		ret
+
+return_true:	mov	al, TYPE_TRUE
+		shl	rax, SHIFT_TYPE
+		ret
+
+
+
+
+		global	__builtin_gt
+		global	__builtin_gt.continue
+
+__builtin_gt:	pop	rax
+		mov	[rsp + 2*8], rax
+
+.continue:	call	pop_2_int
+		jc	return_false
+		mov	rax, [rax]
+		cmp	rax, [rbx]
+		jg	return_true
+		jmp	return_false
+
+
+
+		global	__builtin_ge
+		global	__builtin_ge.continue
+
+__builtin_ge:	pop	rax
+		mov	[rsp + 2*8], rax
+.continue:	call	pop_2_int
+		jc	return_false
+		mov	rax, [rax]
+		cmp	rax, [rbx]
+		jge	return_true
+		jmp	return_false
+
+
+
+		global	__builtin_lt
+		global	__builtin_lt.continue
+
+__builtin_lt:	pop	rax
+		mov	[rsp + 2*8], rax
+
+.continue:	call	pop_2_int
+		jc	return_false
+		mov	rax, [rax]
+		cmp	rax, [rbx]
+		jl	return_true
+		jmp	return_false
+
+
+		global	__builtin_le
+		global	__builtin_le.continue
+
+__builtin_le:	pop	rax
+		mov	[rsp + 2*8], rax
+.continue:	call	pop_2_int
+		jc	return_false
+		mov	rax, [rax]
+		cmp	rax, [rbx]
+		jle	return_true
+		jmp	return_false
+
+
 
 is_int:		mov	rdx, rax
 		shr	rdx, SHIFT_TYPE

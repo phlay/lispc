@@ -203,6 +203,11 @@ class Environment:
         lambda_parameter = parameter[0]
         lambda_body = parameter[1]
 
+        # check lambda parameter for double symbols
+        if len(lambda_parameter) != len(set(lambda_parameter)):
+            raise EvalError("%s: parameter symbols are not unique" % (lambda_parameter))
+
+
         compiled_body = self.bake_expr(lambda_body, stack, local + [""] + lambda_parameter)
 
         return LispList( [LispSym("λ"), len(lambda_parameter), compiled_body] )

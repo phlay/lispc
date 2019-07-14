@@ -221,7 +221,7 @@ msg_strerror	db "<string error>", 0
 msg_hex		db "0x", 0
 msg_lambda	db "(λ ", 0
 msg_nl		db `\n`, 0
-msg_nil		db "NIL", 0
+msg_nil		db "#NIL", 0
 msg_true	db "#T", 0
 char_lb		db '('
 char_rb		db ')'

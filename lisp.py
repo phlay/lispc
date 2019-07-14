@@ -27,6 +27,19 @@ class LispObj:
 
 
 class LispList(list, LispObj):
+    def __str__(self):
+        # special case for quote
+        if len(self) == 2 and type(self[0]) == LispSym and self[0] == 'quote':
+            return "'%s" % (str(self[1]))
+        # special case for NIL
+        if len(self) == 0:
+            return "#NIL"
+
+        return '(' + ' '.join(map(repr, self)) + ')'
+
+    def __repr__(self):
+        return str(self)
+
     def head(self):
         if len(self) == 0:
             raise LispError("head of empty list is not defined")
@@ -58,20 +71,10 @@ class LispList(list, LispObj):
         if len(self) == 0:
             result = LispList([])
         else:
-            result = LispList( [ LispSym('cons'), self.head().consify(), self.tail().consify() ] )
-
+            result = LispList( [ LispSym('cons'),
+                                 self.head().consify(),
+                                 self.tail().consify() ] )
         return result
-
-    def __str__(self):
-        # special case for quote
-        if len(self) == 2 and type(self[0]) == LispSym and self[0] == 'quote':
-            return "'%s" % (str(self[1]))
-
-        return '(' + ' '.join(map(repr, self)) + ')'
-
-    def __repr__(self):
-        return str(self)
-
 
 
 class LispSym(str, LispObj):
@@ -114,12 +117,12 @@ class LispStr(str, LispObj):
         return len(self) > 0
 
 class LispTrue(LispObj):
-
-    def __repr__(self):
-        return '#T'
-
     def __str__(self):
         return '#T'
+
+    def __repr__(self):
+        return str(self)
+
 
 
 class LispBuiltin(LispObj):
