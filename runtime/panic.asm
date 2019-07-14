@@ -1,7 +1,6 @@
 %include "runtime.inc"
 %include "syscall.inc"
 %include "puts.inc"
-%include "putc.inc"
 %include "printnum.inc"
 
 

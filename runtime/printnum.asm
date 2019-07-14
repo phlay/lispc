@@ -1,4 +1,4 @@
-%include "putc.inc"
+%include "puts.inc"
 
 section .text
 

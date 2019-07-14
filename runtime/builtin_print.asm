@@ -1,7 +1,6 @@
 %include "runtime.inc"
 %include "printnum.inc"
 %include "puts.inc"
-%include "putc.inc"
 %include "panic.inc"
 
 
