@@ -438,12 +438,20 @@ class LambdaCompiler:
         action = "jmp" if exit else "call"
         sym = None
 
-        # if expression is a symbol, we resolve it first
         if type(expr) == LispSym:
             sym = expr
+
+            # hande special symbols
+            if sym == "quote":
+                self.text += "\tmov\tal, TYPE_QUOTE\n"
+                self.text += "\tshl\trax, SHIFT_TYPE\n"
+                if exit:
+                    self.text += "\tret\n"
+                return
+
+            # try to resolv symbol
             if sym not in self.compiler.env.symbols:
                 raise CompileError("%s: undefined symbol" % (sym))
-
             expr = self.compiler.env.symbols[sym]
 
 

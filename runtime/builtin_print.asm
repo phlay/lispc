@@ -2,6 +2,7 @@
 %include "printnum.inc"
 %include "puts.inc"
 %include "putc.inc"
+%include "panic.inc"
 
 
 section .text
@@ -25,7 +26,6 @@ __builtin_print:
 
 .continue:	mov	r9, rcx			; r9 <- k
 		lea	r10, [rsp + 8*r9]	; r10 <- &ret = &p1 + 8
-		clc
 
 .loop:		sub	r10, 8
 		cmp	r10, rsp
@@ -33,12 +33,10 @@ __builtin_print:
 
 		mov	r8, [r10]		; r8 <- p_i
 		xor	al, al			; no ""
-		call	print_cell
-		jc	.err
+		call	__print_cell
 		jmp	.loop
 
-.done:		clc
-.err:		lea	rsp, [rsp + 8*r9]	; clear stack
+.done:		lea	rsp, [rsp + 8*r9]	; clear stack
 		ret
 
 
@@ -55,15 +53,17 @@ __builtin_println:
 
 
 
-; print_cell - prints a cell to stdout
+;
+; prints a cell to stdout
 ;
 ; input:
 ;	r8	cell
 ;	al	true if we should print "" around strings
 ;
-; XXX should set carry in case of error
 ;
-print_cell:	mov	rdx, r8			; dl <- type(r8)
+		global	__print_cell
+__print_cell:
+		mov	rdx, r8			; dl <- type(r8)
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
 		and	r8, rbp			; r8 <- addr(r8)
@@ -74,6 +74,8 @@ print_cell:	mov	rdx, r8			; dl <- type(r8)
 		je	print_string		; NILs first
 		cmp	dl, TYPE_TRUE
 		je	print_true
+		cmp	dl, TYPE_QUOTE
+		je	print_quote
 
 		test	r8, r8			; now handle NIL
 		jz	print_nil
@@ -87,41 +89,40 @@ print_cell:	mov	rdx, r8			; dl <- type(r8)
 		cmp	dl, TYPE_LAMBDA
 		je	print_lambda
 
-		stc
-		ret
+		jmp	__panic_type
 
-;print_ptr:	mov	rsi, msg_hex
+;print_ptr:	lea	rsi, [msg_hex]
 ;		call	__puts
 ;		mov	rax, r8
 ;		mov	rbx, 16
 ;		call	__printnum
-;		clc
 ;		ret
 
 print_cstr:	mov	rsi, r8
 		call	__puts
-		clc
 		ret
 
-print_true:	mov	rsi, msg_true
+print_true:	lea	rsi, [msg_true]
 		call	__puts
-		clc
 		ret
 
-print_nil:	mov	rsi, msg_nil
+print_quote:	lea	rsi, [msg_quote]
 		call	__puts
-		clc
 		ret
 
 
-print_cons:	mov	rsi, char_lb
+print_nil:	lea	rsi, [msg_nil]
+		call	__puts
+		ret
+
+print_cons:	lea	rsi, [char_lb]
 		call	__putc
 		xor	al, al			; set al to 1 to print
 		inc	al			; "" around strings
 
 .left:		push	r8
 		mov	r8, [r8]		; r8 <- left(r8)
-		call	print_cell
+		call	__print_cell
 		pop	r8
 
 		mov	r8, [r8 + 8]		; r8 <- right(r8)
@@ -137,46 +138,42 @@ print_cons:	mov	rsi, char_lb
 		jmp	.left
 
 .right:		call	__putsp
-		mov	rsi, char_dot
+		lea	rsi, [char_dot]
 		call	__putc
 		call	__putsp
-		call	print_cell
-.out:		mov	rsi, char_rb
+		call	__print_cell
+.out:		lea	rsi, [char_rb]
 		call	__putc
-		clc
 		ret
 
 
 print_int:	mov	rax, [r8]		; rax <- left(r8)
 		call	__printnum10
-		clc
 		ret
 
 print_string:	test	al, al
 		jz	.start
 
-		mov	rsi, char_dq
+		lea	rsi, [char_dq]
 		call	__putc
 		call	.start
-		jc	.out
-		mov	rsi, char_dq
+		lea	rsi, [char_dq]
 		call	__putc
-.done:		clc
-.out:		ret
+.done:		ret
 
 .start:		test	r8, r8			; empty string?
 		jz	.done
 
-		mov	rsi, r8
+.print_block:	mov	rsi, r8
 		mov	rcx, 8
 
-.loop:		cmp	byte [rsi], 0
+.print_char:	cmp	byte [rsi], 0
 		je	.done
 		push	rcx
 		call	__putc
 		pop	rcx
 		inc	rsi
-		loop	.loop
+		loop	.print_char
 
 		mov	r8, [r8 + 8]
 		mov	rdx, r8
@@ -185,15 +182,11 @@ print_string:	test	al, al
 		and	r8, rbp
 		jz	.done
 		cmp	dl, TYPE_STR
-		jne	.error
-		jmp	.start
+		jne	__panic_type
+		jmp	.print_block
 
-.error:		mov	rsi, msg_strerror	; XXX
-		call	__puts
-		stc
-		ret
 
-print_lambda:	mov	rsi, msg_lambda
+print_lambda:	lea	rsi, [msg_lambda]
 		call	__puts
 
 		mov	rax, [r8 + 8]
@@ -210,19 +203,17 @@ print_lambda:	mov	rsi, msg_lambda
 
 		lea	rsi, [char_rb]
 		call	__putc
-
-		clc
 		ret
 
 
 section .data
 
-msg_strerror	db "<string error>", 0
 msg_hex		db "0x", 0
 msg_lambda	db "(λ ", 0
 msg_nl		db `\n`, 0
 msg_nil		db "#NIL", 0
 msg_true	db "#T", 0
+msg_quote	db "quote", 0
 char_lb		db '('
 char_rb		db ')'
 char_dot	db '.'

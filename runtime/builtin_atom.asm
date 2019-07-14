@@ -12,7 +12,6 @@ __builtin_atom:	pop	rax
 		jz	.true
 		shr	rax, SHIFT_TYPE
 		and	al, BYTEMASK_TYPE
-
 		cmp	al, TYPE_CONS
 		je	.false
 

@@ -43,9 +43,6 @@ def builtin_cons(x, L):
 def builtin_list(*L):
     return LispList(L)
 
-def builtin_quote(x):
-    return x
-
 def builtin_eval(x):
     # evaluate in main environment - this is a bit ugly
     return __main__.env.evaluate(x)
@@ -169,7 +166,6 @@ TABLE = {
         'cons' : LispBuiltin(builtin_cons, 2),
         'atom' : LispBuiltin(builtin_atom, 1),
         #'list' : LispBuiltin(builtin_list),
-        'quote' : LispBuiltin(builtin_quote, 1),
         'eval' : LispBuiltin(builtin_eval, 1),
         'eq' : LispBuiltin(builtin_eq, 2),
         'lt' : LispBuiltin(builtin_lt, 2),

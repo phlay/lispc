@@ -1,1 +1,7 @@
-extern	__panic
+extern	__panic_memory
+extern	__panic_oom
+extern	__panic_type
+extern	__panic_nil
+extern	__panic_overflow
+extern	__panic_underflow
+extern	__panic_argc

@@ -1,5 +1,8 @@
 %include "runtime.inc"
+%include "panic.inc"
 %include "mem.inc"
+
+
 
 		global	__builtin_add
 		global	__builtin_add.continue
@@ -8,13 +11,12 @@ __builtin_add:	pop	rax
 		mov	[rsp + 8*2], rax
 
 .continue:	call	pop_2_int
-		jc	.out
+		jc	__panic_type
 
 		mov	rax, [rax]
 		add	rax, [rbx]
-		jc	.out
+		jc	__panic_overflow
 		jmp	__mem_int
-.out:		ret
 
 
 		global	__builtin_sub
@@ -24,13 +26,12 @@ __builtin_sub:	pop	rax
 		mov	[rsp + 8*2], rax
 
 .continue:	call	pop_2_int
-		jc	.out
+		jc	__panic_type
 
 		mov	rax, [rax]
 		sub	rax, [rbx]
-		jc	.out
+		jc	__panic_underflow
 		jmp	__mem_int
-.out:		ret
 
 
 
@@ -38,35 +39,31 @@ __builtin_sub:	pop	rax
 		global	__builtin_mul.continue
 
 __builtin_mul:	pop	rax
-		mov	[rsp + 8*2], rax
+		mov	[rsp + 2*8], rax
 
 .continue:	call	pop_2_int
-		jc	.out
+		jc	__panic_type
 
 		mov	rax, [rax]
 		mul	qword [rbx]
 		test	rdx, rdx	; overflow check
-		jnz	.errout
+		jnz	__panic_overflow
 		jmp	__mem_int
-
-.errout:	stc
-.out:		ret
 
 
 		global	__builtin_div
 		global	__builtin_div.continue
 
 __builtin_div:	pop	rax
-		mov	[rsp + 8*2], rax
+		mov	[rsp + 2*8], rax
 
 .continue:	call	pop_2_int
-		jc	.out
+		jc	__panic_type
 
 		xor	rdx, rdx
 		mov	rax, [rax]
 		div	qword [rbx]
 		jmp	__mem_int
-.out:		ret
 
 
 
@@ -74,17 +71,16 @@ __builtin_div:	pop	rax
 		global	__builtin_mod.continue
 
 __builtin_mod:	pop	rax
-		mov	[rsp + 8*2], rax
+		mov	[rsp + 2*8], rax
 
 .continue:	call	pop_2_int
-		jc	.out
+		jc	__panic_type
 
 		xor	rdx, rdx
 		mov	rax, [rax]
 		div	qword [rbx]
 		mov	rax, rdx
 		jmp	__mem_int
-.out:		ret
 
 
 

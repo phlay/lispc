@@ -24,16 +24,13 @@ __mem_init:
 		syscall
 		mov	rbx, rax	; check for MAP_FAILED = -1
 		inc	rbx
-		jz	.errout
+		jz	__panic_memory
 
 		mov	[pool], rax
 		mov	[next_free], rax
 		add	rax, rsi
 		mov	[pool_end], rax
 
-		clc
-		ret
-.errout:	stc
 		ret
 
 
@@ -64,8 +61,7 @@ __mem_alloc:
 		;
 
 		; collecting garbage did not help => die
-		mov	rsi, mem_oom_msg
-		call	__panic
+		call	__panic_oom
 		; not reached
 
 
@@ -95,7 +91,6 @@ __mem_cons:	call	__mem_alloc		; allocate cell
 		mov	al, TYPE_CONS		; mark address with info
 		shl	rax, SHIFT_TYPE
 		or	rax, rdi
-		clc
 		ret
 
 
@@ -120,7 +115,6 @@ __mem_int:	call	__mem_alloc
 		mov	al, TYPE_INT
 		shl	rax, SHIFT_TYPE
 		or	rax, rdi
-		clc
 		ret
 
 
@@ -176,8 +170,7 @@ __mem_string:	xor	rdi, rdi
 		inc	rdi
 		jmp	.loop
 
-.out:		clc
-		ret
+.out:		ret
 
 
 ;
@@ -202,14 +195,8 @@ __mem_lambda:	call	__mem_alloc
 		mov	al, TYPE_LAMBDA
 		shl	rax, SHIFT_TYPE
 		or	rax, rdi
-		clc
 		ret
 
-
-
-section .data
-
-mem_oom_msg	db "out of memory", 0
 
 
 section .bss

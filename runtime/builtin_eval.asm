@@ -1,4 +1,11 @@
 %include "runtime.inc"
+%include "panic.inc"
+
+
+%ifdef DEBUG
+extern __builtin_println
+%endif
+
 
 
 section .text
@@ -30,18 +37,16 @@ __builtin_eval:	pop	rax
 		global	__eval
 
 __eval:
-		;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-		;push	rax
-		;
-		;push	rax	; dummy
-		;push	msg_eval
-		;push	rax
-		;mov	rcx, 2
-		;call	__builtin_println
-		;
-		;pop	rax
-		;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+%ifdef DEBUG
+		push	rax
+		push	rax	; dummy
+		push	msg_eval
+		push	rax
+		mov	rcx, 2
+		call	__builtin_println
+		pop	rax
+%endif
 
 		mov	rdx, rax
 		shr	rdx, SHIFT_TYPE
@@ -51,21 +56,21 @@ __eval:
 		cmp	dl, TYPE_CONS
 		je	eval_call
 
-.out:		clc
-		ret
+.out:		ret
 
 
-eval_call:	mov	rdi, rsp		; save stack pointer in case of error
-		and	rax, rbp
+eval_call:	and	rax, rbp
 
-		mov	rbx, [rax]		; fetch lambda
+		mov	rbx, [rax]		; fetch head of list
 		mov	rdx, rbx
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
+		cmp	dl, TYPE_QUOTE		; quote is special
+		je	.handle_quote
 		cmp	dl, TYPE_LAMBDA
-		jne	.errout			; rbx must be a lambda
-		and	rbx, rbp
-		jz	.errout			; and not NIL
+		jne	__panic_type		; rbx must be a lambda
+		and	rbx, rbp		; and not NIL
+		jz	__panic_nil
 		mov	r8, [rbx + 8]		; r8 <- lambda argc
 		and	r8, rbp
 		mov	rbx, [rbx]		; rbx <- lambda code
@@ -78,7 +83,7 @@ eval_call:	mov	rdi, rsp		; save stack pointer in case of error
 		and	rax, rbp		; found end of parameter?
 		jz	.call
 		cmp	dl, TYPE_CONS		; this must be a list!
-		jne	.errout
+		jne	__panic_type
 
 		;; now we evaluate [rax] recursively
 		push	rax
@@ -88,7 +93,7 @@ eval_call:	mov	rdi, rsp		; save stack pointer in case of error
 		push	rdi
 
 		mov	rax, [rax]
-		call	__eval			; XXX carry
+		call	__eval
 
 		pop	rdi
 		pop	r8
@@ -105,16 +110,20 @@ eval_call:	mov	rdi, rsp		; save stack pointer in case of error
 .call:		cmp	r8, LAMBDA_VARIADIC
 		je	.out
 		cmp	rcx, r8
-		jne	.errout
+		jne	__panic_argc
 
 .out:		push	rbx			; continue with our function
 		ret
 
-.errout:	mov	rsp, rdi
-		stc
+.handle_quote:	mov	rax, [rax + 8]
+		and	rax, rbp
+		mov	rax, [rax]
 		ret
 
-;
-;section .data
-;
-;msg_eval		db "eval: ", 0
+
+
+section .data
+
+%ifdef DEBUG
+msg_eval		db "eval: ", 0
+%endif

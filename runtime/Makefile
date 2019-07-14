@@ -1,10 +1,9 @@
 AS = nasm
-ASFLAGS = -f elf64
+ASFLAGS = -f elf64 #-DDEBUG
 
 OBJ = start.o mem.o panic.o puts.o putc.o printnum.o true.o call.o \
       builtin_cons.o builtin_head.o builtin_tail.o builtin_print.o \
-      builtin_atom.o builtin_quote.o builtin_eval.o builtin_arith.o \
-      builtin_bool.o
+      builtin_atom.o builtin_eval.o builtin_arith.o builtin_bool.o
 
 .PHONY: clean distclean all
 .SUFFIXES: .asm
