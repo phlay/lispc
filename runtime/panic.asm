@@ -2,10 +2,7 @@
 %include "syscall.inc"
 %include "puts.inc"
 %include "printnum.inc"
-
-
-extern __print_cell
-extern __stack_start
+%include "start.inc"
 
 
 section	.text
@@ -106,7 +103,7 @@ exit_with_trace:
 		lea	rsi, [msg_stacktrace]
 		call	__puts
 
-.loop:		cmp	rsp, [__stack_start]
+.loop:		cmp	rsp, [__start_stack]
 		jae	exit
 
 		pop	rax

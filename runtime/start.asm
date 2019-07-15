@@ -5,7 +5,7 @@
 
 extern	main
 
-global	__stack_start
+global	__start_stack
 
 section .text
 
@@ -16,7 +16,7 @@ _start:		mov	rbp, MASK_ADDR
 		mov	rsi, 64*1024*1024
 		call	__mem_init
 
-		mov	[__stack_start], rsp
+		mov	[__start_stack], rsp
 
 		; we assume no parameter to main
 		push	rax		; dummy
@@ -30,4 +30,4 @@ _start:		mov	rbp, MASK_ADDR
 
 section .bss
 
-__stack_start		resq	1
+__start_stack		resq	1

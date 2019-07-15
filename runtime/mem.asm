@@ -1,6 +1,7 @@
 %include "runtime.inc"
 %include "syscall.inc"
 %include "panic.inc"
+%include "start.inc"
 
 
 section .text
@@ -38,38 +39,88 @@ __mem_init:
 ; allocates a new cell from pool
 ;
 ; output:
-;	rdi	address of new cell without any type information
+;	RDI	address of new cell without any type information
 ;
-
+; don't change: RAX, RBX, RSI
+;
+; changes: cl, rdx, rdi, r8, r9
+;
 		global	__mem_alloc
-__mem_alloc:
+
+__mem_alloc:	xor	cl, cl
 		mov	rdi, [next_free]
+.search:	cmp	rdi, [pool_end]
+		jae	.need_gc
 
-		;
-		; XXX check used
-		;
+.check_free:	mov	rdx, [rdi + 8]
+		rcl	rdx, 1
+		jnc	.return
 
-		jmp	.out
-
-
-		;
-		; XXX garbage collect
-		;
-		;; start searching from beginning again
-		; mov	rax, [pool]
-		;
-		;; search stack for values to mark
-		;
-
-		; collecting garbage did not help => die
-		call	__panic_oom
-		; not reached
+		mov	rdx, [rdi + 8]		; mark as free and continue
+		shl	rdx, 1
+		shr	rdx, 1
+		mov	[rdi + 8], rdx
+		add	rdi, 16
+		jmp	.search
 
 
-.out:		mov	r8, rdi
+.need_gc:	test	cl, cl			; did we already collect?
+		jnz	__panic_oom
+
+		lea	r8, [rsp + 8]
+.mark_stack:	cmp	r8, [__start_stack]
+		jae	.done_marking
+		mov	r9, [r8]
+		call	mark
+		add	r8, 8
+		jmp	.mark_stack
+
+.done_marking:	mov	rdi, [pool]		; restart at beginning
+		inc	cl
+		jmp	.check_free
+
+.return:	mov	r8, rdi
 		add	r8, 16
 		mov	[next_free], r8
 		ret
+
+
+;
+; mark memory as beeing in use
+;
+; input:
+;	R9	cell to mark
+;
+; changes: rdx, rdi, r9
+;
+mark:		mov	rdx, r9
+		shr	rdx, SHIFT_TYPE
+		and	dl, BYTEMASK_TYPE
+		and	r9, rbp
+		jz	.out
+		test	dl, dl
+		jz	.out
+
+		mov	rdi, [r9 + 8]		; mark this cell
+		shl	rdi, 1
+		stc
+		rcr	rdi, 1
+		mov	[r9 + 8], rdi
+
+		cmp	dl, TYPE_CONS
+		je	.mark_cons
+		cmp	dl, TYPE_STR
+		je	.mark_str
+.out:		ret
+
+.mark_cons:	push	r9
+		mov	r9, [r9]
+		call	mark
+		pop	r9
+.mark_str:	mov	r9, [r9 + 8]
+		jmp	mark
+
+
 
 
 ;
@@ -105,7 +156,6 @@ __mem_int:	call	__mem_alloc
 ; output:
 ;	RAX	cell with string
 ;
-
 		global	__mem_string
 
 __mem_string:	xor	rdi, rdi
