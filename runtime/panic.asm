@@ -60,6 +60,10 @@ __panic_argc:
 		jmp	exit_with_msg_trace
 
 
+		global	__panic_notyet
+__panic_notyet:
+		lea	rsi, [panic_notyet]
+		jmp	exit_with_msg_trace
 
 
 ;
@@ -154,3 +158,4 @@ panic_nil		db `unexpected #NIL`, 0
 panic_overflow		db `overflow`, 0
 panic_underflow		db `underflow`, 0
 panic_argc		db `illegal number of parameter`, 0
+panic_notyet		db `feature not yet implemented`, 0

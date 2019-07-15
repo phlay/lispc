@@ -84,28 +84,6 @@ __builtin_mod:	pop	rax
 
 
 
-		global	__builtin_eq
-		global	__builtin_eq.continue
-
-__builtin_eq:	pop	rax
-		mov	[rsp + 2*8], rax
-
-.continue:	call	pop_2_int
-		jc	return_false
-		mov	rax, [rax]
-		cmp	rax, [rbx]
-		je	return_true
-
-return_false:	xor	rax, rax
-		ret
-
-return_true:	mov	al, TYPE_TRUE
-		shl	rax, SHIFT_TYPE
-		ret
-
-
-
-
 		global	__builtin_gt
 		global	__builtin_gt.continue
 
@@ -117,7 +95,14 @@ __builtin_gt:	pop	rax
 		mov	rax, [rax]
 		cmp	rax, [rbx]
 		jg	return_true
-		jmp	return_false
+
+return_false:	xor	rax, rax
+		ret
+
+return_true:	mov	al, TYPE_TRUE
+		shl	rax, SHIFT_TYPE
+		ret
+
 
 
 

@@ -5,3 +5,4 @@ extern	__panic_nil
 extern	__panic_overflow
 extern	__panic_underflow
 extern	__panic_argc
+extern	__panic_notyet
