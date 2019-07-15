@@ -165,7 +165,7 @@ TABLE = {
         'println' : LispBuiltin(builtin_println, None, side=True),
         'cons' : LispBuiltin(builtin_cons, 2),
         'atom' : LispBuiltin(builtin_atom, 1),
-        #'list' : LispBuiltin(builtin_list),
+        'list' : LispBuiltin(builtin_list),
         'eval' : LispBuiltin(builtin_eval, 1),
         'eq' : LispBuiltin(builtin_eq, 2),
         'lt' : LispBuiltin(builtin_lt, 2),

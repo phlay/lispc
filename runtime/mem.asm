@@ -41,13 +41,11 @@ __mem_init:
 ; output:
 ;	RDI	address of new cell without any type information
 ;
-; don't change: RAX, RBX, RSI
-;
-; changes: cl, rdx, rdi, r8, r9
+; changes: rdx, rdi, r8, r9, r10b
 ;
 		global	__mem_alloc
 
-__mem_alloc:	xor	cl, cl
+__mem_alloc:	xor	r10b, r10b
 		mov	rdi, [next_free]
 .search:	cmp	rdi, [pool_end]
 		jae	.need_gc
@@ -64,7 +62,7 @@ __mem_alloc:	xor	cl, cl
 		jmp	.search
 
 
-.need_gc:	test	cl, cl			; did we already collect?
+.need_gc:	test	r10b, r10b		; did we already collect?
 		jnz	__panic_oom
 
 		lea	r8, [rsp + 8]
@@ -76,7 +74,7 @@ __mem_alloc:	xor	cl, cl
 		jmp	.mark_stack
 
 .done_marking:	mov	rdi, [pool]		; restart at beginning
-		inc	cl
+		inc	r10b
 		jmp	.check_free
 
 .return:	mov	r8, rdi
