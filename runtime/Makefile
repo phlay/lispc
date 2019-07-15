@@ -15,7 +15,7 @@ all:	runtime.a builtin_head.o builtin_tail.o builtin_print.o
 clean:
 	rm -f *.o
 
-distclean: clean
+cleanall: clean
 	rm -f runtime.a
 
 .asm.o:

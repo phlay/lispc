@@ -41,6 +41,7 @@ __mem_init:
 ;	rdi	address of new cell without any type information
 ;
 
+		global	__mem_alloc
 __mem_alloc:
 		mov	rdi, [next_free]
 
@@ -69,30 +70,6 @@ __mem_alloc:
 		add	r8, 16
 		mov	[next_free], r8
 		ret
-
-
-;
-; construct a new cell from two cell addresses
-;
-; input:
-;	RAX	cell x
-;	RBX	cell y
-;
-; output:
-;	RAX	( cons x y )
-;
-		global	__mem_cons
-
-__mem_cons:	call	__mem_alloc		; allocate cell
-
-		mov	[rdi], rax		; left
-		mov	[rdi + 8], rbx		; right
-
-		mov	al, TYPE_CONS		; mark address with info
-		shl	rax, SHIFT_TYPE
-		or	rax, rdi
-		ret
-
 
 
 ;

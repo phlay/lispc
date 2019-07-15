@@ -21,9 +21,6 @@ class LispObj:
     def tail(self):
         raise LispError("tail only defined for list")
 
-    def consify(self):
-        return self
-
 
 
 class LispList(list, LispObj):
@@ -69,22 +66,11 @@ class LispList(list, LispObj):
         return head.is_executable()
 
 
-
-
     def is_head(self, name):
         if len(self) > 0 and type(self[0]) == LispSym and self[0] == name:
             return True
 
         return False
-
-    def consify(self):
-        if len(self) == 0:
-            result = LispList([])
-        else:
-            result = LispList( [ LispSym('cons'),
-                                 self.head().consify(),
-                                 self.tail().consify() ] )
-        return result
 
 
 class LispSym(str, LispObj):

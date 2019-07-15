@@ -296,7 +296,7 @@ class LambdaCompiler:
                 return
 
             elif function == "quote":
-                self.emit_continue_expr(parameter[0].consify())
+                self.emit_constant_to_rax(parameter[0], exit = True)
                 return
 
             elif function == "λ":
@@ -397,7 +397,7 @@ class LambdaCompiler:
                 return
 
             elif function == "quote":
-                self.emit_call_expr(parameter[0].consify())
+                self.emit_constant_to_rax(parameter[0])
                 return
 
         # push parameter for function call
@@ -435,18 +435,26 @@ class LambdaCompiler:
 
 
 
-    def emit_constant_to_rax(self, expr, exit = False):
+    def emit_constant_to_rax(self, expr, exit = False, mov_rbx_rax = False, rax_zero = False):
 
         action = "jmp" if exit else "call"
         sym = None
+
+        if exit and mov_rbx_rax:
+            raise CompileError("internal error - can't save rbx and exit with constant")
+
 
         if type(expr) == LispSym:
             sym = expr
 
             # hande special symbols
             if sym == "quote":
+                if mov_rbx_rax:
+                    self.text += "\tmov\trbx, rax\n"
+
                 self.text += "\tmov\tal, TYPE_QUOTE\n"
                 self.text += "\tshl\trax, SHIFT_TYPE\n"
+
                 if exit:
                     self.text += "\tret\n"
                 return
@@ -459,6 +467,10 @@ class LambdaCompiler:
 
         if type(expr) == LispInt:
             self.compiler.extern.add("__mem_int")
+
+            if mov_rbx_rax:
+                self.text += "\tmov\trbx, rax\n"
+
             self.text += "\tmov\trax, %d\n" % (expr)
             self.text += "\t%s\t__mem_int\n" % (action)
 
@@ -467,12 +479,18 @@ class LambdaCompiler:
         #    self.text += "\t%s\t__mem_real\n" % (action)
 
         elif type(expr) == LispRef:
+            if mov_rbx_rax:
+                self.text += "\tmov\trbx, rax\n"
+
             self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
                     (self.stack_offset + int(expr) - 1, expr)
             if exit:
                 raise CompileError("internal error - exit to rax with stack reference")
 
         elif type(expr) == LispTrue:
+            if mov_rbx_rax:
+                self.text += "\tmov\trbx, rax\n"
+
             self.text += "\tmov\tal, TYPE_TRUE\n"
             self.text += "\tshl\trax, SHIFT_TYPE\n"
             if exit:
@@ -480,14 +498,26 @@ class LambdaCompiler:
 
         elif type(expr) == LispStr:
             self.compiler.extern.add("__mem_string")
+
             label = self.compiler.get_string_label(expr)
+
+            if mov_rbx_rax:
+                self.text += "\tpush\trax\n"
 
             self.text += "\tmov\trsi, %s\n" % (label)
             self.text += "\tmov\trbx, %d\n" % (len(expr))
             self.text += "\t%s\t__mem_string\n" % (action)
 
+            if mov_rbx_rax:
+                self.text += "\tpop\trbx\n"
+
         elif type(expr) == LispBuiltin or expr.is_head("λ"):
+            self.compiler.extern.add("__mem_lambda")
+
             function_label, function_argc = self.compiler.get_function_label(expr, sym)
+
+            if mov_rbx_rax:
+                self.text += "\tpush\trax\n"
 
             self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
             if function_argc is None:
@@ -497,19 +527,41 @@ class LambdaCompiler:
             else:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
 
-            self.compiler.extern.add("__mem_lambda")
             self.text += "\t%s\t__mem_lambda\n" % (action)
+
+            if mov_rbx_rax:
+                self.text += "\tpop\trbx\n"
 
         elif type(expr) == LispList:
             if len(expr) == 0:
-                self.text += "\txor\trax, rax\n"
+                if mov_rbx_rax:
+                    self.text += "\tmov\trbx, rax\n"
+                if not rax_zero:
+                    self.text += "\txor\trax, rax\n"
                 if exit:
-                    self.text += "\tret\n"
+                    self.text += "\tret"
+
             else:
-                if exit:
-                    self.emit_continue_expr(expr.consify())
-                else:
-                    self.emit_call_expr(expr.consify())
+                self.compiler.extern.add("__cons")
+
+                if mov_rbx_rax:
+                    self.text += "\tpush\trax\n"
+
+                if not rax_zero:
+                    self.text += "\txor\trax, rax\n"
+                    rax_zero = True
+
+                for item in reversed(expr[1:]):
+                    self.emit_constant_to_rax(item, mov_rbx_rax = True, rax_zero = rax_zero)
+                    self.text += "\tcall\t__cons\n"
+                    rax_zero = False
+
+                self.emit_constant_to_rax(expr[0], mov_rbx_rax = True, rax_zero = rax_zero)
+                self.text += "\t%s\t__cons\n" % (action)
+
+                if mov_rbx_rax:
+                    self.text += "\tpop\trbx\n"
 
         else:
             raise CompileError("can't compile atom: %s" % (expr))
+
