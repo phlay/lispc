@@ -336,8 +336,8 @@ class LambdaCompiler:
                     (self.stack_offset + int(function) - 1)
             self.emit_parameter_reorder(argc, len(parameter))
             self.text += "\tmov\trcx, %d\n" % (parameter_count)
-            self.text += "\tjmp\t__call.continue\n"
-            self.compiler.extern.add("__call.continue")
+            self.text += "\tjmp\t__apply.continue\n"
+            self.compiler.extern.add("__apply.continue")
 
         else:
             function_label, function_argc = self.compiler.get_function_label(function)
@@ -416,8 +416,8 @@ class LambdaCompiler:
             self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
                     (self.stack_offset + int(function) - 1)
             self.text += "\tmov\trcx, %d\n" % (len(parameter))
-            self.text += "\tcall\t__call\n"
-            self.compiler.extern.add("__call")
+            self.text += "\tcall\t__apply\n"
+            self.compiler.extern.add("__apply")
 
         else:
             function_label, function_argc = self.compiler.get_function_label(function)

@@ -4,7 +4,7 @@
 section .text
 
 ;
-; call a lambda
+; apply a lambda to parameter given to this function
 ;
 ; input:
 ;	RAX	lambda to call
@@ -14,10 +14,10 @@ section .text
 ;	RAX	result of lambda
 ;
 
-		global	__call
-		global	__call.continue
+		global	__apply
+		global	__apply.continue
 
-__call:		pop	rbx
+__apply:	pop	rbx
 		mov	[rsp + 8*rcx], rbx
 
 .continue:	mov	rdx, rax
