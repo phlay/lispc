@@ -11,16 +11,6 @@ class EvalError(LispError): pass
 class EvalNoValue(EvalError): pass
 
 
-
-def local_sym_to_ref(sym, local):
-    n = len(local)
-    for i in range(n):
-        if sym == local[n - i - 1]:
-            return LispRef(i+1)
-    return None
-
-
-
 class Environment:
 
     def __init__(self, symbols = None):
@@ -81,10 +71,14 @@ class Environment:
                 function = LispList([ LispSym("lambda"),
                                       lambda_parameter,
                                       lambda_body ])
-                value = self.bake_lambda(function[1:])
+                value = LispLambda(function)
                 self.symbols[symbol] = value
 
                 return value
+
+            if cmd == "symbols":
+                return LispList(self.symbols)
+
 
         if interactive:
             return self.evaluate(instruction)
@@ -94,218 +88,84 @@ class Environment:
 
 
 
-
-    #
-    # evaluate
-    #
-
-    def evaluate(self, expr, stack = None, local = None):
+    def evaluate(self, expr, stack = None, argc = 0):
         if stack is None:
             stack = []
-        if local is None:
-            local = []
 
-        if expr.is_atom():
-            if type(expr) == LispSym:
-                if local_sym_to_ref(expr, local):
-                    raise EvalNoValue("local variable has no value")
-                if expr in self.symbols:
-                    return self.symbols[expr]
-                raise EvalNoValue("unknown symbol: %s" % (expr))
+        while True:
+            if expr.is_atom():
+                if type(expr) == LispSym:
+                    if expr in self.symbols:
+                        return self.symbols[expr]
+                    raise EvalNoValue("unknown symbol: %s" % (expr))
 
-            if type(expr) == LispRef:
-                if int(expr) <= len(local):
-                    raise EvalNoValue("local reference has no value")
-                return stack[len(local)-int(expr)]
+                if type(expr) == LispRef:
+                    return stack[-int(expr)]
 
-            return expr
-
-
-        function = expr.head()
-        parameter = expr.tail()
-
-        if type(function) == LispSym:
-            if   function == 'quote':
-                if len(parameter) != 1:
-                    raise EvalError('quote expects exactly one parameter')
-
-                return parameter[0]
-            elif function == 'if':
-                return self.eval_if(parameter, stack, local)
-            elif function == 'eval':
-                return self.eval_eval(parameter, stack, local)
-            elif function == 'lambda':
-                return self.bake_lambda(parameter, stack, local)
-            elif function == 'λ':
-                return self.bake_closure(parameter, stack, local)
-
-        evalfun = self.evaluate(function, stack, local)
-        evalpar = [ self.evaluate(p, stack, local) for p in parameter ]
-
-        if type(evalfun) == LispBuiltin:
-            if evalfun.argc is not None and evalfun.argc != len(evalpar):
-                raise EvalError("%s: expects %d parameter, got %d"
-                        % (function, evalfun.argc, len(evalpar)))
-
-            try:
-                return evalfun.function(*evalpar)
-            except TypeError:
-                raise EvalError("%s: illegal number of parameter to builtin function"
-                        % (function))
-
-        elif evalfun.is_head("λ"):
-            if evalfun[1] != len(evalpar):
-                raise EvalError("%s: expects %d parameter, got %d" %
-                        (function, evalfun[1], len(evalpar)))
-
-            return self.eval_apply_lambda(evalfun, evalpar, stack, local)
-
-        else:
-            raise EvalError("list is not executable: %s" % (evalfun))
-
-
-    def eval_if(self, parameter, stack, local):
-        if len(parameter) != 3:
-            raise EvalError('if expects exactly 3 parameters')
-
-        if self.evaluate(parameter[0], stack, local).is_true():
-            return self.evaluate(parameter[1], stack, local)
-        else:
-            return self.evaluate(parameter[2], stack, local)
-
-
-    def eval_eval(self, parameter, stack, local):
-        if len(parameter) != 1:
-            raise EvalError('eval expects exactly one parameter')
-
-        return self.evaluate(self.evaluate(parameter[0], stack, local),
-                             stack, local)
-
-
-    def eval_apply_lambda(self, function, parameter, stack, local):
-        lambda_argc = function[1]
-        lambda_body = function[2]
-
-        if len(parameter) != lambda_argc:
-            raise EvalError("lambda needs %d parameter but got %d"
-                    % (lambda_argc, len(parameter)))
-
-        return self.evaluate(lambda_body, stack + [None] + parameter, local)
-
-
-
-
-    #
-    # Baking lambdas: (lambda (x1 x2 ... xk) body) -> (λ k newbody)
-    # where new body uses $1, ..., $k instead of xk, ..., x1
-    #
-
-    def bake_lambda(self, parameter, stack = None, local = None):
-        if stack is None:
-            stack = []
-        if local is None:
-            local = []
-
-        lambda_parameter = parameter[0]
-        lambda_body = parameter[1]
-
-        # check lambda parameter for double symbols
-        if len(lambda_parameter) != len(set(lambda_parameter)):
-            raise EvalError("%s: parameter symbols are not unique"
-                    % (lambda_parameter))
-
-
-        compiled_body = self.bake_expr(lambda_body, stack,
-                                       local + [""] + lambda_parameter)
-
-        return LispList( [LispSym("λ"), len(lambda_parameter), compiled_body] )
-
-
-    def bake_closure(self, parameter, stack = None, local = None):
-        if stack is None:
-            stack = []
-        if local is None:
-            local = []
-
-        lambda_argc = parameter[0]
-        lambda_body = parameter[1]
-
-        # recompile lambda with dummy parameter on local symbol table
-        compiled_body = self.bake_expr(lambda_body, stack,
-                                       local + (lambda_argc+1)*[''])
-
-        return LispList( [LispSym("λ"), lambda_argc, compiled_body] )
-
-
-    def bake_expr(self, expr, stack, local):
-        if expr.is_atom():
-            if type(expr) == LispSym:
-                local_ref = local_sym_to_ref(expr, local)
-                if local_ref is not None:
-                    return local_ref
+                if type(expr) == LispLambda:
+                    return expr.closure(stack)
 
                 return expr
 
-            if type(expr) == LispRef:
-                if int(expr) <= len(local):
-                    return expr
-                return stack[len(local)-int(expr)]
 
-            return expr
+            function = expr.head()
+            parameter = expr.tail()
 
+            if type(function) == LispSym:
+                if   function == 'quote':
+                    if len(parameter) != 1:
+                        raise EvalError('quote expects exactly one parameter')
 
-        function = expr.head()
-        parameter = expr.tail()
+                    return parameter[0]
 
-        if type(function) == LispSym:
-            if function == "quote":
-                if len(parameter) != 1:
-                    raise EvalError("quote needs exactly one parameter")
-                return expr
-            elif function == "if":
-                return self.bake_if(parameter, stack, local)
-            elif function == "lambda":
-                return self.bake_lambda(parameter, stack, local)
-            elif function == "λ":
-                return self.bake_closure(parameter, stack, local)
+                elif function == 'if':
+                    if len(parameter) != 3:
+                        raise EvalError('if expects exactly 3 parameters')
 
-        # compile function call
+                    if self.evaluate(parameter[0], stack).is_true():
+                        expr = parameter[1]
+                    else:
+                        expr = parameter[2]
+                    continue
 
-        # XXX optimization disabled for now
-        #try:
-        #    return self.evaluate(expr, stack, local)
-        #except EvalNoValue:
-        #    pass
+                elif function == 'eval':
+                    if len(parameter) != 1:
+                        raise EvalError('eval expects exactly one parameter')
 
-        compiled_expr = LispList([ self.bake_expr(p, stack, local) for p in expr ])
-        compiled_function = compiled_expr.head()
+                    expr = self.evaluate(parameter[0], stack)
+                    continue
 
-        if not compiled_function.is_executable():
-            raise EvalError("function is not executable: %s" % (compiled_function))
-
-        return compiled_expr
+                elif function == 'lambda':
+                    return LispLambda(expr)
 
 
-    def bake_if(self, parameter, stack, local):
-        if len(parameter) != 3:
-            raise EvalError("if needs exactly three parameter")
+            evalfun = self.evaluate(function, stack)
+            evalpar = [ self.evaluate(p, stack) for p in parameter ]
 
-        # try evaluate condition
-        condition = parameter[0]
-        case_true = self.bake_expr(parameter[1], stack, local)
-        case_false = self.bake_expr(parameter[2], stack, local)
+            if type(evalfun) == LispBuiltin:
+                if evalfun.argc is not None and evalfun.argc != len(evalpar):
+                    raise EvalError("%s: expects %d parameter, got %d"
+                            % (function, evalfun.argc, len(evalpar)))
 
-        # XXX optimization disabled for now
-        #if not condition.is_head('quote'):
-        #    try:
-        #        if self.evaluate(condition, stack, local).is_true():
-        #            return case_true
-        #        else:
-        #            return case_false
-        #    except EvalNoValue:
-        #        pass
+                try:
+                    return evalfun.function(*evalpar)
+                except TypeError:
+                    raise EvalError("%s: illegal number of parameter to builtin function"
+                            % (function))
 
-        # direct evaluation did not work out, compile conditional instead
-        condition = self.bake_expr(condition, stack, local)
+            if type(evalfun) == LispLambda:
+                if evalfun.argc != len(evalpar):
+                    raise EvalError("%s: expects %d parameter, got %d" %
+                            (function, evalfun.argc, len(evalpar)))
 
-        return LispList([ LispSym("if"), condition, case_true, case_false ])
+                if argc > 0:
+                    stack = stack[:-argc]
+
+                newframe = evalfun.stack + [LispList()] + evalpar
+                stack += newframe
+                argc = len(newframe)
+                expr = evalfun.body
+                continue
+
+
+            raise EvalError("%s: not executable" % (evalfun))

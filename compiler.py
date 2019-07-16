@@ -44,7 +44,7 @@ class Compiler:
             raise CompileError("%s: symbol not found" % (sym))
 
         item = self.env.symbols[sym]
-        if item.is_head("λ"):
+        if type(item) == LispLambda:
             self.lambda_cache[str(item)] = sym
             self.compiled_lambda[sym] = LambdaCompiler(self, item, sym)
         else:
@@ -144,12 +144,10 @@ class Compiler:
 
             expr = self.env.symbols[sym]
 
-        if expr.is_head("λ"):
-            argc = expr[1]
-
+        if type(expr) == LispLambda:
             # do we already have a label for this?
             if str(expr) in self.lambda_cache:
-                return self.lambda_cache[str(expr)], argc
+                return self.lambda_cache[str(expr)], expr.argc
 
             # invent a label if this is anonymous
             if sym is None:
@@ -161,7 +159,7 @@ class Compiler:
             self.lambda_cache[str(expr)] = label
             self.compiled_lambda[label] = LambdaCompiler(self, expr, label)
 
-            return label, argc
+            return label, expr.argc
 
         elif type(expr) == LispBuiltin:
             self.extern.add(expr.extern)
@@ -210,11 +208,11 @@ class LambdaCompiler:
 
 
     def compile(self, expr):
-        if not expr.is_head("λ"):
+        if type(expr) != LispLambda:
             raise CompileError("%s: not a lambda" % (expr))
 
-        lambda_argc = int(expr[1])
-        lambda_body = expr[2]
+        lambda_argc = expr.argc
+        lambda_body = expr.body
 
         # emit function label
         if not self.label.startswith("_"):
@@ -299,9 +297,6 @@ class LambdaCompiler:
                 self.emit_constant_to_rax(parameter[0], exit = True)
                 return
 
-            elif function == "λ":
-                # XXX
-                raise CompileError("can't yet return closures")
 
         #
         # check for parameter-takeover case: function we call
@@ -511,8 +506,10 @@ class LambdaCompiler:
             if mov_rbx_rax:
                 self.text += "\tpop\trbx\n"
 
-        elif type(expr) == LispBuiltin or expr.is_head("λ"):
+        elif type(expr) == LispBuiltin or type(expr) == LispLambda:
             self.compiler.extern.add("__mem_lambda")
+
+            # XXX suport closures!
 
             function_label, function_argc = self.compiler.get_function_label(expr, sym)
 
