@@ -162,7 +162,7 @@ class Environment:
                     stack = stack[:-argc]
 
                 newframe = evalfun.stack + [LispList()] + evalpar
-                stack += newframe
+                stack = stack + newframe
                 argc = len(newframe)
                 expr = evalfun.body
                 continue
