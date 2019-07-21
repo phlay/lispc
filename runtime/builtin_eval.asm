@@ -6,6 +6,7 @@
 extern __builtin_println
 %endif
 
+extern	__apply.continue
 
 
 section .text
@@ -37,7 +38,6 @@ __builtin_eval:	pop	rax
 		global	__eval
 
 __eval:
-
 %ifdef DEBUG
 		push	rax
 		push	rax	; dummy
@@ -51,75 +51,66 @@ __eval:
 		mov	rdx, rax
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
-		test	rax, rbp		; if NIL go out, leave type on
+		test	rax, rbp		; leave type on for return value
 		jz	.out
 		cmp	dl, TYPE_CONS
-		je	eval_call
-
+		je	eval_cons
 .out:		ret
 
 
-eval_call:	and	rax, rbp
 
-		mov	rbx, [rax]		; fetch head of list
-		mov	rdx, rbx
+eval_cons:	mov	rbx, rax
+		and	rbx, rbp
+		mov	rax, [rbx]
+
+		mov	rdx, rax
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
-		cmp	dl, TYPE_QUOTE		; quote is special
+		cmp	dl, TYPE_QUOTE
 		je	.handle_quote
+		cmp	dl, TYPE_CONS
+		je	.handle_cons
 		cmp	dl, TYPE_LAMBDA
-		jne	__panic_type		; rbx must be a lambda
-		and	rbx, rbp		; and not NIL
-		jz	__panic_nil
-		mov	r8, [rbx + 8]		; r8 <- lambda argc
-		and	r8, rbp
-		mov	rbx, [rbx]		; rbx <- lambda code
-		xor	rcx, rcx		; rcx is parameter counter
+		je	.eval_params
+		cmp	dl, TYPE_CLOSURE
+		je	.eval_params
+		jmp	__panic_type
 
-.push_params:	mov	rax, [rax + 8]		; load next
-		mov	rdx, rax		; dl <- type of parameter
-		shr	rdx, SHIFT_TYPE
-		and	dl, BYTEMASK_TYPE
-		and	rax, rbp		; found end of parameter?
-		jz	.call
-		cmp	dl, TYPE_CONS		; this must be a list!
-		jne	__panic_type
-
-		;; now we evaluate [rax] recursively
-		push	rax
-		push	rbx
-		push	rcx
-		push	r8
-		push	rdi
-
-		mov	rax, [rax]
-		call	__eval
-
-		pop	rdi
-		pop	r8
-		pop	rcx
-		pop	rbx
-
-		pop	rdx			; replace value on stack
-		xchg	rax, rdx		; (old RAX) with current RAX
-		push	rdx			; (= result of __eval)
-
-		inc	rcx
-		jmp	.push_params
-
-.call:		cmp	r8, LAMBDA_VARIADIC
-		je	.out
-		cmp	rcx, r8
-		jne	__panic_argc
-
-.out:		push	rbx			; continue with our function
-		ret
-
-.handle_quote:	mov	rax, [rax + 8]
+.handle_quote:	mov	rax, [rbx + 8]		; just return first argument
 		and	rax, rbp
 		mov	rax, [rax]
 		ret
 
+.handle_cons:	push	rbx
+		call	eval_cons
+		pop	rbx
+
+.eval_params:	mov	r8, rax			; this is hopefully a lambda
+		xor	rcx, rcx		; count parameters in rcx
+
+.push_params:	mov	rbx, [rbx + 8]		; load next entry in list
+		mov	rdx, rbx		; dl <- type of parameter
+		shr	rdx, SHIFT_TYPE
+		and	dl, BYTEMASK_TYPE
+		and	rbx, rbp		; found end of parameter?
+		jz	.apply
+		cmp	dl, TYPE_CONS		; this must be a list!
+		jne	__panic_type
+
+		push	rbx
+		push	rcx
+		push	r8
+		mov	rax, [rbx]		; eval [rbx] recursively
+		call	__eval
+		pop	r8
+		pop	rcx
+		pop	rbx
+		push	rax			; push result on stack
+		inc	rcx
+		jmp	.push_params
+
+.apply:		mov	rax, r8
+		jmp	__apply.continue
 
 
 section .data

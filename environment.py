@@ -8,7 +8,6 @@ import builtin
 from lisp import *
 
 class EvalError(LispError): pass
-class EvalNoValue(EvalError): pass
 
 
 class Environment:
@@ -93,17 +92,21 @@ class Environment:
             stack = []
 
         while True:
+            #print("eval: %s  stack: %s  argc: %d" % (expr, stack, argc))
+
             if expr.is_atom():
                 if type(expr) == LispSym:
                     if expr in self.symbols:
                         return self.symbols[expr]
-                    raise EvalNoValue("unknown symbol: %s" % (expr))
+                    raise EvalError("%s: unknown symbol" % (expr))
 
                 if type(expr) == LispRef:
                     return stack[-int(expr)]
 
                 if type(expr) == LispLambda:
-                    return expr.closure(stack)
+                    if expr.is_closure():
+                        return expr.capture(stack)
+                    return expr
 
                 return expr
 
@@ -139,8 +142,8 @@ class Environment:
                     return LispLambda(expr)
 
 
-            evalfun = self.evaluate(function, stack)
             evalpar = [ self.evaluate(p, stack) for p in parameter ]
+            evalfun = self.evaluate(function, stack)
 
             if type(evalfun) == LispBuiltin:
                 if evalfun.argc is not None and evalfun.argc != len(evalpar):
@@ -158,12 +161,18 @@ class Environment:
                     raise EvalError("%s: expects %d parameter, got %d" %
                             (function, evalfun.argc, len(evalpar)))
 
-                if argc > 0:
-                    stack = stack[:-argc]
+                #print("[DEBUG] evalfun: %s, evalpar: %s, function: %s" % (evalfun, evalpar, function))
 
-                newframe = evalfun.stack + [LispList()] + evalpar
-                stack = stack + newframe
-                argc = len(newframe)
+                if type(function) == LispLambda:
+                    argc += len(evalpar)
+
+                else:
+                    if argc > 0:
+                        stack = stack[:-argc]
+
+                    argc = len(evalpar)
+
+                stack = stack + evalpar
                 expr = evalfun.body
                 continue
 

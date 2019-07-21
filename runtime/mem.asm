@@ -213,11 +213,55 @@ __mem_string:	xor	rdi, rdi
 		global	__mem_lambda
 
 __mem_lambda:	call	__mem_alloc
-
 		mov	[rdi], rsi
 		mov	[rdi + 8], rbx
 
 		mov	al, TYPE_LAMBDA
+		shl	rax, SHIFT_TYPE
+		or	rax, rdi
+		ret
+
+
+
+;
+; allocates a closure which is a lambda together with captured stack
+;
+; input:
+;	RAX	lambda
+;	RBX	array of indices to capture
+;
+; output:
+;	RAX	closure
+;
+
+		global	__mem_closure
+
+__mem_closure:	mov	r11, rsp
+		push	rax			; push lambda on stack
+		xor	rcx, rcx		; push end of stack-list
+		push	rcx
+		cld
+
+.loop:		mov	cx, [rbx]
+		test	cx, cx
+		jz	.out
+		add	rbx, 2
+		lea	rsi, [r11 + rcx]
+
+		call	__mem_alloc
+		mov	al, TYPE_CONS		; rax = marked-rdi
+		shl	rax, SHIFT_TYPE
+		or	rax, rdi
+		movsq				; copy stack value
+		pop	qword [rdi]		; link in list
+		push	rax			; push new list-head
+		jmp	.loop
+
+.out:		call	__mem_alloc
+		pop	qword [rdi + 8]		; lave stack-list in right-side
+		pop	qword [rdi]		; save lambda in left-side
+
+		mov	al, TYPE_CLOSURE
 		shl	rax, SHIFT_TYPE
 		or	rax, rdi
 		ret

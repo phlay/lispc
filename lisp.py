@@ -1,4 +1,4 @@
-import copy
+from copy import copy
 
 class LispError(Exception): pass
 
@@ -64,7 +64,7 @@ class LispList(list, LispObj):
             return True
 
         head = self.head()
-        if type(head) == LispSym and head == "λ":
+        if type(head) == LispSym:
             return True
 
         return head.is_executable()
@@ -142,8 +142,12 @@ class LispBuiltin(LispObj):
         return True
 
 
+
+
+
 class LispLambda(LispObj):
-    def __init__(self, expr, local = None):
+
+    def __init__(self, expr, local = None, closure = False):
         if local is None:
             local = []
 
@@ -157,55 +161,102 @@ class LispLambda(LispObj):
             raise LambdaError("%s: parameter symbols are not unique"
                     % (lambda_parameter))
 
-        self.max_ref = 0
-        self.stack = LispList([])
-        self.local = local + [""] + lambda_parameter
+        if closure:
+            self.local = local
+            backrefs = sorted(self.find_backrefs(lambda_body, set(lambda_parameter)),
+                              key=lambda x: int(x[1]), reverse=True)
+
+            self.capture_indices = [ R[1] for R in backrefs ]
+            self.local = lambda_parameter + [ R[0] for R in backrefs ]
+
+        else:
+            self.local = local + lambda_parameter
+
+        self.closure = closure
         self.argc = len(lambda_parameter)
-        self.body = self.bake(lambda_body)
+        self.body = self.process(lambda_body)
+
 
     def __str__(self):
-        return "( λ %d %s )" % (self.argc, self.body)
+        if self.is_closure():
+            return "( ξ %s ( λ %d %s ) )" % \
+                    (LispList(self.capture_indices), self.argc, self.body)
+        else:
+            return "( λ %d %s )" % (self.argc, self.body)
 
     def __repr__(self):
         return str(self)
 
+    def is_executable(self):
+        return True
 
-    def closure(self, stack):
-        n = self.max_ref - self.argc - 1
-        if n > 0:
-            result = copy.copy(self)
-            result.stack = stack[-n:].copy()
+    def is_closure(self):
+        return self.closure and bool(self.capture_indices)
+
+
+    def capture(self, values):
+        new = copy(self)
+
+        if self.is_closure():
+            # find the cutting point, from where on the indices are now obsolete
+            cut = 0
+            while cut < len(self.capture_indices) and self.capture_indices[cut] > len(values):
+                cut += 1
+            if cut == len(self.capture_indices):
+                return self
+
+            # capture the values for indices beyond the cut-off
+            capture = [ values[-i] for i in self.capture_indices[cut:] ]
+
+            new.capture_indices = [ LispRef(i - len(capture)) for i in self.capture_indices[:cut] ]
+            new.body = LispLambda.replace(self.body, capture)
+
         else:
-            result = self
+            new.body = LispLambda.replace(self.body, values)
 
-        return result
+        return new
+
+
+    def replace(expr, values):
+        if expr.is_atom():
+            if type(expr) == LispRef:
+                newref = expr-len(values)
+                return LispRef(newref) if newref > 0 else values[-newref]
+            if type(expr) == LispLambda:
+                return expr.capture(values, len(values))
+
+            return expr
+
+        return LispList([ LispLambda.replace(sub, values) for sub in expr ])
 
 
     def resolve_local_sym(self, sym):
         for i,name in enumerate(reversed(self.local)):
             if sym == name:
-                n = i + 1
-
-                if n > self.max_ref:
-                    self.max_ref = n
-
-                return LispRef(n)
+                return LispRef(i+1)
 
         return None
 
-    def bake(self, expr):
+    def find_backrefs(self, expr, parameter):
+        result = set()
+        if expr.is_atom():
+            if type(expr) == LispSym and expr not in parameter:
+                local_ref = self.resolve_local_sym(expr)
+                if local_ref is not None:
+                    result = set([(expr, local_ref)])
+        else:
+            for sub in expr:
+                result = result.union( self.find_backrefs(sub, parameter) )
+
+        return result
+
+
+    def process(self, expr, exe=False):
         if expr.is_atom():
             if type(expr) == LispSym:
                 local_ref = self.resolve_local_sym(expr)
                 if local_ref is not None:
                     return local_ref
-
-                return expr
-
-            if type(expr) == LispRef:
-                if int(expr) <= len(local):
-                    return expr
-                return self.stack[len(local)-int(expr)]
 
             return expr
 
@@ -221,9 +272,9 @@ class LispLambda(LispObj):
                 if len(parameter) != 3:
                     raise EvalError("if needs exactly three parameter")
 
-                condition = self.bake(parameter[0])
-                case_true = self.bake(parameter[1])
-                case_false = self.bake(parameter[2])
+                condition = self.process(parameter[0])
+                case_true = self.process(parameter[1])
+                case_false = self.process(parameter[2])
 
                 return LispList([ LispSym("if"),
                                   condition,
@@ -231,17 +282,13 @@ class LispLambda(LispObj):
                                   case_false ])
 
             elif function == "lambda":
-                return LispLambda(expr, self.local)
-
-        if type(function) == LispLambda:
-            raise LambdaError("internal error - baking LispLambda")
+                return LispLambda(expr, self.local, closure=(not exe))
 
 
-        # compile function call
-        compiled_expr = LispList([ self.bake(p) for p in expr ])
-        compiled_function = compiled_expr.head()
+        # process function call
+        processed_function = self.process(function, exe=True)
+        processed_parameter = LispList([ self.process(p) for p in parameter ])
+        if not processed_function.is_executable():
+            raise LambdaError("%s: not executable" % (processed_function))
 
-        if not compiled_function.is_executable():
-            raise LambdaError("function is not executable: %s" % (compiled_function))
-
-        return compiled_expr
+        return LispList( [processed_function] + processed_parameter )

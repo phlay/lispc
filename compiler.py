@@ -34,8 +34,9 @@ class Compiler:
     def reset(self):
         self.extern = set()
         self.compiled_lambda = {}
-        self.string_cache = {}
         self.lambda_cache = {}
+        self.string_cache = {}
+        self.capture_cache = {}
         self.counter = 0
 
 
@@ -68,11 +69,15 @@ class Compiler:
             result += c.text
             result += "\n\n"
 
-        if self.string_cache:
+        if self.string_cache or self.capture_cache:
             result += "section .data\n\n"
 
             for string, label in self.string_cache.items():
-                result += '%s:\tdb "%s"\n' % (label, string)
+                result += '%s\tdb "%s"\n' % (label, string)
+
+            for capture, label in self.capture_cache.items():
+                result += '%s\tdw %s, 0\n' % (label, capture)
+
 
         return result
 
@@ -180,7 +185,15 @@ class Compiler:
         self.string_cache[string] = label
         return label
 
+    def get_capture_label(self, capture):
+        key = ', '.join([ str(8*i) for i in reversed(capture) ])
 
+        if key in self.capture_cache:
+            return self.capture_cache[key]
+
+        label = "__capture_%s" % (self.get_unique())
+        self.capture_cache[key] = label
+        return label
 
 
 
@@ -195,7 +208,6 @@ class LambdaCompiler:
 
         self.label = label
         self.counter = 0
-        self.stack_offset = 0
         self.text = ""
 
         self.compile(expr)
@@ -211,8 +223,10 @@ class LambdaCompiler:
         if type(expr) != LispLambda:
             raise CompileError("%s: not a lambda" % (expr))
 
-        lambda_argc = expr.argc
         lambda_body = expr.body
+        lambda_bindings = expr.argc
+        if expr.is_closure():
+            lambda_bindings += len(expr.capture_indices)
 
         # emit function label
         if not self.label.startswith("_"):
@@ -220,16 +234,17 @@ class LambdaCompiler:
             self.text += "\tglobal\t%s.continue\n" % (self.label)
         self.text += "%s:\n" % (self.label)
 
-        # emit prologue
+        # emit prologue XXX we don't need a prologue for closures
         self.text += "\tpop\trax\n"
-        self.text += "\tmov\t[rsp + 8*%d], rax\n" % (lambda_argc)
+        self.text += "\tmov\t[rsp + 8*%d], rax\n" % (lambda_bindings)
         self.text += ".continue:\n"
 
         # emit body
-        self.emit_continue_expr(lambda_argc, lambda_body)
+        self.emit_continue_expr(lambda_body, lambda_bindings)
 
 
-    def emit_parameter_reorder(self, old, new):
+
+    def emit_stack_reorder(self, old, new):
         if old == 0:
             return
 
@@ -252,17 +267,12 @@ class LambdaCompiler:
 
 
 
-    def emit_continue_expr(self, argc, expr):
-        if expr.is_atom():
-            if type(expr) == LispRef:
-                self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
-                        (self.stack_offset + int(expr) - 1, expr)
-                self.emit_parameter_reorder(argc, 0)
-                self.text += "\tret\n"
-            else:
-                self.emit_parameter_reorder(argc, 0)
-                self.emit_constant_to_rax(expr, exit = True)
 
+    def emit_continue_expr(self, expr, bindings, offset=0):
+        if expr.is_atom():
+            self.emit_constant_to_rax(expr, exit=True,
+                                            offset=offset,
+                                            bindings=bindings)
             return
 
         function = expr[0]
@@ -275,26 +285,29 @@ class LambdaCompiler:
                 iflabel = ".if_%s_false" % self.get_unique()
                 # evaluate if-expression
                 #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
-                self.emit_call_expr(parameter[0])
+                self.emit_expr(parameter[0], offset=offset)
                 self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel)
                 # true case
                 self.text += "\n"
-                self.emit_continue_expr(argc, parameter[1])
+                self.emit_continue_expr(parameter[1], bindings, offset)
                 # false case
                 self.text += "\n"
                 self.text += "%s:\n" % (iflabel)
-                self.emit_continue_expr(argc, parameter[2])
+                self.emit_continue_expr(parameter[2], bindings, offset)
                 return
 
             elif function == "eval":
                 self.compiler.extern.add("__eval")
-                self.emit_call_expr(parameter[0])
+                self.emit_expr(parameter[0], offset=offset)
                 self.text += "\tjmp\t__eval\n"
                 return
 
             elif function == "quote":
-                self.emit_constant_to_rax(parameter[0], exit = True)
+                self.emit_constant_to_rax(parameter[0],
+                                          exit=True,
+                                          offset=offset,
+                                          bindings=bindings)
                 return
 
 
@@ -305,42 +318,62 @@ class LambdaCompiler:
         # parameter the function gets.
         #
         parameter_count = len(parameter)
-        while argc > 0 and len(parameter) > 0:
-            first = parameter[0]
-            if type(first) != LispRef or int(first) != argc:
-                break
+        if type(function) != LispLambda:
+            while bindings > 0 and len(parameter) > 0:
+                first = parameter[0]
+                if type(first) != LispRef or int(first) != bindings:
+                    break
 
-            argc -= 1
-            parameter = parameter[1:]
+                bindings -= 1
+                parameter = parameter[1:]
 
+        #
         # now evaluate parameters and push them on stack
+        #
         for p in parameter:
-            self.emit_call_expr(p)
+            self.emit_expr(p, offset=offset)
             self.text += "\tpush\trax\n"
-            self.stack_offset += 1
+            offset += 1
             self.text += "\n"
 
+
         #
-        # now we call our function, there are two cases
+        # now we call our function, there are three cases
         #
         #  1) Dynamic Function, given by a local reference
-        #  2) Static Funcion, either by symbol or explicitly by lambda
+        #  2) Local Binding, a call to an anonymous lambda
+        #  3) Static Function, a lambda call given by symbol
+        #
+        # XXX forth option: call to a function to retrieve
+        #     lambda / closure to execute here
         #
         if type(function) == LispRef:
             self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
-                    (self.stack_offset + int(function) - 1)
-            self.emit_parameter_reorder(argc, len(parameter))
+                    (offset + int(function) - 1)
+            self.emit_stack_reorder(bindings, len(parameter))
             self.text += "\tmov\trcx, %d\n" % (parameter_count)
+
             self.text += "\tjmp\t__apply.continue\n"
             self.compiler.extern.add("__apply.continue")
 
-        else:
+
+        elif type(function) == LispLambda:
+            if function.argc is None:
+                raise CompileError("%s: variadic lambda not allowed in local binding" % (function))
+            if function.argc != parameter_count:
+                raise CompileError("%s: expects %d parameter but got %d"
+                        % (function, function_argc, parameter_count))
+
+            self.emit_continue_expr(function.body, bindings=bindings+len(parameter))
+
+
+        elif type(function) == LispSym:
             function_label, function_argc = self.compiler.get_function_label(function)
             if function_argc is not None and function_argc != parameter_count:
                 raise CompileError("%s: expects %d parameter but got %d"
                         % (function, function_argc, parameter_count))
 
-            self.emit_parameter_reorder(argc, len(parameter))
+            self.emit_stack_reorder(bindings, len(parameter))
 
             # if variadic, inform our function how many parameter it is receiving
             if function_argc is None:
@@ -348,16 +381,25 @@ class LambdaCompiler:
 
             self.text += "\tjmp\t%s.continue\n" % (function_label)
 
-        self.stack_offset -= len(parameter)
+        elif type(function) == LispList:
+            self.emit_expr(function, offset=offset)
+            self.emit_stack_reorder(bindings, len(parameter))
+            self.text += "\tmov\trcx, %d\n" % (parameter_count)
+            self.text += "\tjmp\t__apply.continue\n"
+            self.compiler.extern.add("__apply.continue")
+
+        else:
+            raise CompileError("%s: not executable" % (function))
 
 
 
-    def emit_call_expr(self, expr):
 
-        #print("[DEBUG] emit_call_expr: %s" % (expr))
+    def emit_expr(self, expr, bindings=0, offset=0):
+
+        #print("[DEBUG] emit_expr: %s" % (expr))
 
         if expr.is_atom():
-            self.emit_constant_to_rax(expr)
+            self.emit_constant_to_rax(expr, offset)
             return
 
         function = expr[0]
@@ -369,17 +411,17 @@ class LambdaCompiler:
                 iflabel = ".if_%s_" % self.get_unique()
                 # evaluate if-condition
                 #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
-                self.emit_call_expr(parameter[0])
+                self.emit_expr(parameter[0], offset=offset)
                 self.text += "\tcall\t__true\n"
                 self.text += "\tjc\t%s\n" % (iflabel+"false")
                 # true case
                 self.text += "\n"
-                self.emit_call_expr(parameter[1])
+                self.emit_expr(parameter[1], bindings, offset)
                 self.text += "\tjmp\t%s\n" % (iflabel + "end")
                 # false case
                 self.text += "\n"
                 self.text += "%s:\n" % (iflabel + "false")
-                self.emit_call_expr(parameter[2])
+                self.emit_expr(parameter[2], bindings, offset)
                 # end if
                 self.text += "\n"
                 self.text += "%s:\n" % (iflabel + "end")
@@ -387,7 +429,7 @@ class LambdaCompiler:
 
             elif function == "eval":
                 self.compiler.extern.add("__eval")
-                self.emit_call_expr(parameter[0])
+                self.emit_expr(parameter[0], offset=offset)
                 self.text += "\tcall\t__eval\n"
                 return
 
@@ -395,26 +437,44 @@ class LambdaCompiler:
                 self.emit_constant_to_rax(parameter[0])
                 return
 
+
+        # if this is not a local binding we are going to call a function
+        # and therefor need a dummy on our stack
+        self.text += "\t; eval %s\n" % (expr)
+        if type(function) != LispLambda:
+            self.text += "\tpush\trax\t\t\t; dummy\n"
+            offset += 1
+
         # push parameter for function call
-        #self.text += "\t; calculate %s\n" % (expr)
-        self.text += "\tpush\trax\t\t\t; dummy\n"
-        self.stack_offset += 1
         for p in parameter:
-            self.emit_call_expr(p)
+            self.emit_expr(p, offset=offset)
             self.text += "\tpush\trax\n"
-            self.stack_offset += 1
+            offset += 1
 
         #
-        # Like above, we can have dynamic or static functions
+        # call our function
         #
         if type(function) == LispRef:
             self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
-                    (self.stack_offset + int(function) - 1)
+                    (offset + int(function) - 1)
             self.text += "\tmov\trcx, %d\n" % (len(parameter))
             self.text += "\tcall\t__apply\n"
             self.compiler.extern.add("__apply")
 
-        else:
+            # remove local bindings
+            if bindings > 0:
+                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+
+        elif type(function) == LispLambda:
+            if function.argc is None:
+                raise CompileError("%s: variadic lambda not allowed in local binding" % (function))
+            if function.argc != len(parameter):
+                raise CompileError("%s: expects %d parameter but got %d"
+                        % (function, function_argc, len(parameter)))
+
+            self.emit_expr(function.body, bindings=bindings+len(parameter))
+
+        elif type(function) == LispSym:
             function_label, function_argc = self.compiler.get_function_label(function)
             if function_argc is not None and function_argc != len(parameter):
                 raise CompileError("%s: expects %d parameter but got %d" %
@@ -426,11 +486,24 @@ class LambdaCompiler:
 
             self.text += "\tcall\t%s\n" % (function_label)
 
-        self.stack_offset -= len(parameter) + 1
+            # remove local bindings
+            if bindings > 0:
+                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+
+        elif type(function) == LispList:
+            self.emit_expr(function, offset=offset)
+            self.text += "\tmov\trcx, %d\n" % (len(parameter))
+            self.text += "\tcall\t__apply\n"
+            self.compiler.extern.add("__apply")
+            if bindings > 0:
+                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+
+        else:
+            raise CompileError("%s: not executable" % (function))
 
 
 
-    def emit_constant_to_rax(self, expr, exit = False, mov_rbx_rax = False, rax_zero = False):
+    def emit_constant_to_rax(self, expr, offset=0, exit=False, bindings=0, mov_rbx_rax=False, rax_zero=False):
 
         action = "jmp" if exit else "call"
         sym = None
@@ -451,7 +524,9 @@ class LambdaCompiler:
                 self.text += "\tshl\trax, SHIFT_TYPE\n"
 
                 if exit:
+                    self.emit_stack_reorder(bindings, 0)
                     self.text += "\tret\n"
+
                 return
 
             # try to resolv symbol
@@ -465,6 +540,8 @@ class LambdaCompiler:
 
             if mov_rbx_rax:
                 self.text += "\tmov\trbx, rax\n"
+            if exit:
+                self.emit_stack_reorder(bindings, 0)
 
             self.text += "\tmov\trax, %d\n" % (expr)
             self.text += "\t%s\t__mem_int\n" % (action)
@@ -478,9 +555,11 @@ class LambdaCompiler:
                 self.text += "\tmov\trbx, rax\n"
 
             self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
-                    (self.stack_offset + int(expr) - 1, expr)
+                    (offset + int(expr) - 1, expr)
+
             if exit:
-                raise CompileError("internal error - exit to rax with stack reference")
+                self.emit_stack_reorder(bindings, 0)
+                self.text += "\tret\n"
 
         elif type(expr) == LispTrue:
             if mov_rbx_rax:
@@ -488,29 +567,29 @@ class LambdaCompiler:
 
             self.text += "\tmov\tal, TYPE_TRUE\n"
             self.text += "\tshl\trax, SHIFT_TYPE\n"
+
             if exit:
+                self.emit_stack_reorder(bindings, 0)
                 self.text += "\tret\n"
 
         elif type(expr) == LispStr:
-            self.compiler.extern.add("__mem_string")
-
             label = self.compiler.get_string_label(expr)
 
             if mov_rbx_rax:
                 self.text += "\tpush\trax\n"
+            if exit:
+                self.emit_stack_reorder(bindings, 0)
 
             self.text += "\tmov\trsi, %s\n" % (label)
             self.text += "\tmov\trbx, %d\n" % (len(expr))
             self.text += "\t%s\t__mem_string\n" % (action)
+            self.compiler.extern.add("__mem_string")
 
             if mov_rbx_rax:
                 self.text += "\tpop\trbx\n"
 
         elif type(expr) == LispBuiltin or type(expr) == LispLambda:
             self.compiler.extern.add("__mem_lambda")
-
-            # XXX suport closures!
-
             function_label, function_argc = self.compiler.get_function_label(expr, sym)
 
             if mov_rbx_rax:
@@ -524,7 +603,26 @@ class LambdaCompiler:
             else:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
 
-            self.text += "\t%s\t__mem_lambda\n" % (action)
+            # are we dealing with a closure?
+            if type(expr) == LispLambda and expr.is_closure():
+                # first create a lambda
+                self.text += "\tcall\t__mem_lambda\n"
+
+                # now capture stack
+                capture_label = self.compiler.get_capture_label(expr.capture_indices)
+                self.text += "\tlea\trbx, [%s]\n" % (capture_label)
+                self.text += "\tcall\t__mem_closure\n"
+                self.compiler.extern.add("__mem_closure")
+
+                if exit:
+                    self.emit_stack_reorder(bindings, 0)
+                    self.text += "\tret\n"
+
+            else:
+                if exit:
+                    self.emit_stack_reorder(bindings, 0)
+
+                self.text += "\t%s\t__mem_lambda\n" % (action)
 
             if mov_rbx_rax:
                 self.text += "\tpop\trbx\n"
@@ -536,6 +634,7 @@ class LambdaCompiler:
                 if not rax_zero:
                     self.text += "\txor\trax, rax\n"
                 if exit:
+                    self.emit_stack_reorder(bindings, 0)
                     self.text += "\tret"
 
             else:
@@ -554,6 +653,10 @@ class LambdaCompiler:
                     rax_zero = False
 
                 self.emit_constant_to_rax(expr[0], mov_rbx_rax = True, rax_zero = rax_zero)
+
+                if exit:
+                    self.emit_stack_reorder(bindings, 0)
+
                 self.text += "\t%s\t__cons\n" % (action)
 
                 if mov_rbx_rax:
@@ -561,4 +664,3 @@ class LambdaCompiler:
 
         else:
             raise CompileError("can't compile atom: %s" % (expr))
-

@@ -23,7 +23,7 @@ __panic_oom:	lea	rsi, [panic_oom]
 ;
 		global	__panic_type
 __panic_type:	push	rdx
-		lea	rsi, [msg_error]
+		lea	rsi, [panic_type]
 		call	print_error_msg
 		pop	rdx
 		xor	rax, rax
@@ -75,7 +75,6 @@ print_error_msg:
 		call	__puts
 		pop	rsi
 		call	__puts
-		call	__putnl
 		ret
 
 
@@ -87,6 +86,7 @@ print_error_msg:
 ;
 exit_with_msg:
 		call	print_error_msg
+		call	__putnl
 
 exit:		mov	rax, SYS_EXIT
 		xor	rdi, rdi

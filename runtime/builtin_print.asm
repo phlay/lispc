@@ -87,6 +87,8 @@ __print_cell:
 		je	print_int
 		cmp	dl, TYPE_LAMBDA
 		je	print_lambda
+		cmp	dl, TYPE_CLOSURE
+		je	print_closure
 
 		jmp	__panic_type
 
@@ -204,10 +206,27 @@ print_lambda:	lea	rsi, [msg_lambda]
 		call	__putc
 		ret
 
+print_closure:	lea	rsi, [msg_closure]
+		call	__puts
+
+		push	r8
+		mov	r8, [r8 + 8]
+		call	__print_cell
+		call	__putsp
+		pop	r8
+
+		mov	r8, [r8]
+		call	__print_cell
+
+		lea	rsi, [char_rb]
+		call	__putc
+		ret
+
 
 section .data
 
 msg_hex		db "0x", 0
+msg_closure	db "(ξ ", 0
 msg_lambda	db "(λ ", 0
 msg_nl		db `\n`, 0
 msg_nil		db "#NIL", 0
