@@ -6,7 +6,7 @@ OBJ = start.o mem.o panic.o puts.o printnum.o true.o apply.o \
       builtin_atom.o builtin_eval.o builtin_arith.o builtin_bool.o \
       builtin_eq.o builtin_list.o
 
-.PHONY: clean distclean all
+.PHONY: clean cleanall all
 .SUFFIXES: .asm
 
 all:	runtime.a builtin_head.o builtin_tail.o builtin_print.o

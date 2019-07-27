@@ -61,39 +61,20 @@ __eval:
 
 eval_cons:	mov	rbx, rax
 		and	rbx, rbp
-		mov	rax, [rbx]
-
-		mov	rdx, rax
+		mov	r8, [rbx]		; r8  = function to execute
+		mov	rdx, r8
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
-		cmp	dl, TYPE_QUOTE
+		cmp	dl, TYPE_QUOTE		; detect quote early
 		je	.handle_quote
-		cmp	dl, TYPE_CONS
-		je	.handle_cons
-		cmp	dl, TYPE_LAMBDA
-		je	.eval_params
-		cmp	dl, TYPE_CLOSURE
-		je	.eval_params
-		jmp	__panic_type
 
-.handle_quote:	mov	rax, [rbx + 8]		; just return first argument
-		and	rax, rbp
-		mov	rax, [rax]
-		ret
-
-.handle_cons:	push	rbx
-		call	eval_cons
-		pop	rbx
-
-.eval_params:	mov	r8, rax			; this is hopefully a lambda
 		xor	rcx, rcx		; count parameters in rcx
-
 .push_params:	mov	rbx, [rbx + 8]		; load next entry in list
 		mov	rdx, rbx		; dl <- type of parameter
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
 		and	rbx, rbp		; found end of parameter?
-		jz	.apply
+		jz	.execute
 		cmp	dl, TYPE_CONS		; this must be a list!
 		jne	__panic_type
 
@@ -105,12 +86,31 @@ eval_cons:	mov	rbx, rax
 		pop	r8
 		pop	rcx
 		pop	rbx
+
 		push	rax			; push result on stack
 		inc	rcx
 		jmp	.push_params
 
-.apply:		mov	rax, r8
-		jmp	__apply.continue
+.execute:	mov	rax, r8
+		mov	rdx, r8
+		shr	rdx, SHIFT_TYPE
+		and	dl, BYTEMASK_TYPE
+		cmp	dl, TYPE_CONS
+		je	.handle_cons
+		cmp	dl, TYPE_LAMBDA
+		je	.apply
+		cmp	dl, TYPE_CLOSURE
+		je	.apply
+		jmp	__panic_type
+
+.handle_quote:	mov	rax, [rbx + 8]		; just return first argument
+		and	rax, rbp
+		mov	rax, [rax]
+		ret
+
+.handle_cons:	call	eval_cons
+.apply:		jmp	__apply.continue
+
 
 
 section .data
