@@ -22,9 +22,8 @@ __builtin_eval:	pop	rax
 		mov	[rsp + 8], rax
 
 .continue:	pop	rax
-		jmp	__eval
 
-
+		; fallthrough
 
 ;
 ; evaluates parameter
