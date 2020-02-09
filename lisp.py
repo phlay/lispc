@@ -162,19 +162,18 @@ class LispLambda(LispObj):
                     % (lambda_parameter))
 
         if closure:
-            self.local = local
-            backrefs = sorted(self.find_backrefs(lambda_body, set(lambda_parameter)),
+            backrefs = sorted(self.find_backrefs(lambda_body, set(lambda_parameter), local),
                               key=lambda x: int(x[1]), reverse=True)
 
             self.capture_indices = [ R[1] for R in backrefs ]
-            self.local = lambda_parameter + [ R[0] for R in backrefs ]
+            local = lambda_parameter + [ R[0] for R in backrefs ]
 
         else:
-            self.local = local + lambda_parameter
+            local = local + lambda_parameter
 
         self.closure = closure
         self.argc = len(lambda_parameter)
-        self.body = self.process(lambda_body)
+        self.body = self.process(lambda_body, local)
 
 
     def __str__(self):
@@ -191,7 +190,7 @@ class LispLambda(LispObj):
         return True
 
     def is_closure(self):
-        return self.closure and bool(self.capture_indices)
+        return self.closure
 
 
     def capture(self, values):
@@ -209,6 +208,7 @@ class LispLambda(LispObj):
             capture = [ values[-i] for i in self.capture_indices[cut:] ]
 
             new.capture_indices = [ LispRef(i - len(capture)) for i in self.capture_indices[:cut] ]
+            new.closure = bool(new.capture_indices)
             new.body = LispLambda.replace(self.body, capture)
 
         else:
@@ -223,38 +223,38 @@ class LispLambda(LispObj):
                 newref = expr-len(values)
                 return LispRef(newref) if newref > 0 else values[-newref]
             if type(expr) == LispLambda:
-                return expr.capture(values, len(values))
+                return expr.capture(values)
 
             return expr
 
         return LispList([ LispLambda.replace(sub, values) for sub in expr ])
 
 
-    def resolve_local_sym(self, sym):
-        for i,name in enumerate(reversed(self.local)):
+    def resolve_local_sym(self, sym, local):
+        for i,name in enumerate(reversed(local)):
             if sym == name:
                 return LispRef(i+1)
 
         return None
 
-    def find_backrefs(self, expr, parameter):
+    def find_backrefs(self, expr, parameter, local):
         result = set()
         if expr.is_atom():
             if type(expr) == LispSym and expr not in parameter:
-                local_ref = self.resolve_local_sym(expr)
+                local_ref = self.resolve_local_sym(expr, local)
                 if local_ref is not None:
                     result = set([(expr, local_ref)])
         else:
             for sub in expr:
-                result = result.union( self.find_backrefs(sub, parameter) )
+                result = result.union( self.find_backrefs(sub, parameter, local) )
 
         return result
 
 
-    def process(self, expr, exe=False):
+    def process(self, expr, local, exe=False):
         if expr.is_atom():
             if type(expr) == LispSym:
-                local_ref = self.resolve_local_sym(expr)
+                local_ref = self.resolve_local_sym(expr, local)
                 if local_ref is not None:
                     return local_ref
 
@@ -272,9 +272,9 @@ class LispLambda(LispObj):
                 if len(parameter) != 3:
                     raise EvalError("if needs exactly three parameter")
 
-                condition = self.process(parameter[0])
-                case_true = self.process(parameter[1])
-                case_false = self.process(parameter[2])
+                condition = self.process(parameter[0], local)
+                case_true = self.process(parameter[1], local)
+                case_false = self.process(parameter[2], local)
 
                 return LispList([ LispSym("if"),
                                   condition,
@@ -282,12 +282,12 @@ class LispLambda(LispObj):
                                   case_false ])
 
             elif function == "lambda":
-                return LispLambda(expr, self.local, closure=(not exe))
+                return LispLambda(expr, local, closure=(not exe))
 
 
         # process function call
-        processed_function = self.process(function, exe=True)
-        processed_parameter = LispList([ self.process(p) for p in parameter ])
+        processed_function = self.process(function, local, exe=True)
+        processed_parameter = LispList([ self.process(p, local) for p in parameter ])
         if not processed_function.is_executable():
             raise LambdaError("%s: not executable" % (processed_function))
 
