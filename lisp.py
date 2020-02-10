@@ -143,8 +143,6 @@ class LispBuiltin(LispObj):
 
 
 
-
-
 class LispLambda(LispObj):
 
     def __init__(self, expr, local = None, closure = False):
@@ -181,8 +179,8 @@ class LispLambda(LispObj):
     def __str__(self):
         if self.closure:
             values = self.capture_values if self.capture_values else self.capture_indices
-            return "( ξ %d %s %s )" % \
-                    (self.argc, LispList(values), self.body)
+            return "( ξ %s %d %s )" % \
+                    (LispList(values), self.argc, self.body)
         else:
             return "( λ %d %s )" % (self.argc, self.body)
 
@@ -191,9 +189,6 @@ class LispLambda(LispObj):
 
     def is_executable(self):
         return True
-
-    def is_closure(self):
-        return self.closure
 
     def capture(self, stack):
         if self.closure:

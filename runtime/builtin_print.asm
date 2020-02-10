@@ -190,6 +190,7 @@ print_string:	test	al, al
 print_lambda:	lea	rsi, [msg_lambda]
 		call	__puts
 
+.continue:
 		mov	rax, [r8 + 8]
 		and	rax, rbp
 		call	__printnum10
@@ -209,18 +210,14 @@ print_lambda:	lea	rsi, [msg_lambda]
 print_closure:	lea	rsi, [msg_closure]
 		call	__puts
 
-		push	r8
-		mov	r8, [r8 + 8]
+		push	qword [r8]		; save pointer to lambda
+		mov	r8, [r8 + 8]		; print captured stack
 		call	__print_cell
 		call	__putsp
-		pop	r8
 
-		mov	r8, [r8]
-		call	__print_cell
-
-		lea	rsi, [char_rb]
-		call	__putc
-		ret
+		pop	r8			; restore lambda
+		and	r8, rbp			; no type check
+		jmp	print_lambda.continue
 
 
 section .data

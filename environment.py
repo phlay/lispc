@@ -161,32 +161,22 @@ class Environment:
 
                 #print("[DEBUG] evalfun: %s, evalpar: %s, function: %s" % (evalfun, evalpar, function))
 
-                # Check if we are applying a lambda inside a lambda-body (a binding).
-                # In this case we must not destroy the stack, since the next body
-                # might refer to older bindings.
-                #
-                # XXX is there a better way to check this?
-                #
-                if type(function) == LispLambda:
-                    stack = stack + evalpar
-                    bindings += len(evalpar)
+                # check if we are executing an explicit lisp-lambda instead of an
+                # indirect one via symbol or call result. In case of a direct
+                # lambda, we are not allowed to clear current bindings, because
+                # it's body might still refer to them.
+                if type(function) != LispLambda and bindings > 0:
+                    stack = stack[:-bindings]
+                    bindings = 0
 
-                else:
-                    #
-                    # now continue to new body
-                    #
+                # add evaluated parameters to stack as new bindings
+                stack = stack + evalpar
+                bindings += len(evalpar)
 
-                    # remove current bindings from stack
-                    if bindings > 0:
-                        stack = stack[:-bindings]
-
-                    stack = stack + evalpar
-                    bindings = len(evalpar)
-
-                    # if we execute a closure, add captured values to stack
-                    if evalfun.is_closure():
-                        stack = stack + evalfun.capture_values
-                        bindings += len(evalfun.capture_values)
+                # if we execute a closure, add captured values to stack
+                if evalfun.closure:
+                    stack = stack + evalfun.capture_values
+                    bindings += len(evalfun.capture_values)
 
                 expr = evalfun.body
                 continue

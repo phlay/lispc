@@ -225,7 +225,7 @@ class LambdaCompiler:
 
         lambda_body = expr.body
         lambda_bindings = expr.argc
-        if expr.is_closure():
+        if expr.closure:
             lambda_bindings += len(expr.capture_indices)
 
         # emit function label
@@ -599,7 +599,7 @@ class LambdaCompiler:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
 
             # are we dealing with a closure?
-            if type(expr) == LispLambda and expr.is_closure():
+            if type(expr) == LispLambda and expr.closure:
                 # first create a lambda
                 self.text += "\tcall\t__mem_lambda\n"
 
