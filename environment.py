@@ -87,12 +87,12 @@ class Environment:
 
 
 
-    def evaluate(self, expr, stack = None, argc = 0):
+    def evaluate(self, expr, stack = None, bindings = 0):
         if stack is None:
             stack = []
 
         while True:
-            #print("eval: %s  stack: %s  argc: %d" % (expr, stack, argc))
+            #print("eval: %s  stack: %s  bindings: %d" % (expr, stack, bindings))
 
             if expr.is_atom():
                 if type(expr) == LispSym:
@@ -104,9 +104,7 @@ class Environment:
                     return stack[-int(expr)]
 
                 if type(expr) == LispLambda:
-                    if expr.is_closure():
-                        return expr.capture(stack)
-                    return expr
+                    return expr.capture(stack)
 
                 return expr
 
@@ -163,18 +161,34 @@ class Environment:
 
                 #print("[DEBUG] evalfun: %s, evalpar: %s, function: %s" % (evalfun, evalpar, function))
 
+                # Check if we are applying a lambda inside a lambda-body (a binding).
+                # In this case we must not destroy the stack, since the next body
+                # might refer to older bindings.
+                #
+                # XXX is there a better way to check this?
+                #
                 if type(function) == LispLambda:
-                    argc += len(evalpar)
+                    stack = stack + evalpar
+                    bindings += len(evalpar)
 
                 else:
-                    if argc > 0:
-                        stack = stack[:-argc]
+                    #
+                    # now continue to new body
+                    #
 
-                    argc = len(evalpar)
+                    # remove current bindings from stack
+                    if bindings > 0:
+                        stack = stack[:-bindings]
 
-                stack = stack + evalpar
+                    stack = stack + evalpar
+                    bindings = len(evalpar)
+
+                    # if we execute a closure, add captured values to stack
+                    if evalfun.is_closure():
+                        stack = stack + evalfun.capture_values
+                        bindings += len(evalfun.capture_values)
+
                 expr = evalfun.body
                 continue
-
 
             raise EvalError("%s: not executable" % (evalfun))

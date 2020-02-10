@@ -154,6 +154,9 @@ class LispLambda(LispObj):
         if not expr.is_head("lambda"):
             raise LambdaError("%s: not a lambda" % (expr))
 
+        if len(expr) != 3:
+            raise LambdaError("lambda needs two parameter")
+
         lambda_parameter = expr[1]
         lambda_body = expr[2]
 
@@ -162,24 +165,24 @@ class LispLambda(LispObj):
                     % (lambda_parameter))
 
         if closure:
-            backrefs = sorted(self.find_backrefs(lambda_body, set(lambda_parameter), local),
-                              key=lambda x: int(x[1]), reverse=True)
-
-            self.capture_indices = [ R[1] for R in backrefs ]
+            backrefs = LispLambda.find_backrefs(lambda_body, set(lambda_parameter), local)
             local = lambda_parameter + [ R[0] for R in backrefs ]
+            self.capture_indices = [ R[1] for R in backrefs ]
+            self.capture_values = None
 
         else:
             local = local + lambda_parameter
 
-        self.closure = closure
+        self.closure = closure and self.capture_indices
         self.argc = len(lambda_parameter)
         self.body = self.process(lambda_body, local)
 
 
     def __str__(self):
-        if self.is_closure():
-            return "( ξ %s ( λ %d %s ) )" % \
-                    (LispList(self.capture_indices), self.argc, self.body)
+        if self.closure:
+            values = self.capture_values if self.capture_values else self.capture_indices
+            return "( ξ %d %s %s )" % \
+                    (self.argc, LispList(values), self.body)
         else:
             return "( λ %d %s )" % (self.argc, self.body)
 
@@ -192,69 +195,18 @@ class LispLambda(LispObj):
     def is_closure(self):
         return self.closure
 
+    def capture(self, stack):
+        if self.closure:
+            new = copy(self)
+            new.capture_values = [ stack[-i] for i in self.capture_indices ]
+            return new
 
-    def capture(self, values):
-        new = copy(self)
-
-        if self.is_closure():
-            # find the cutting point, from where on the indices are now obsolete
-            cut = 0
-            while cut < len(self.capture_indices) and self.capture_indices[cut] > len(values):
-                cut += 1
-            if cut == len(self.capture_indices):
-                return self
-
-            # capture the values for indices beyond the cut-off
-            capture = [ values[-i] for i in self.capture_indices[cut:] ]
-
-            new.capture_indices = [ LispRef(i - len(capture)) for i in self.capture_indices[:cut] ]
-            new.closure = bool(new.capture_indices)
-            new.body = LispLambda.replace(self.body, capture)
-
-        else:
-            new.body = LispLambda.replace(self.body, values)
-
-        return new
-
-
-    def replace(expr, values):
-        if expr.is_atom():
-            if type(expr) == LispRef:
-                newref = expr-len(values)
-                return LispRef(newref) if newref > 0 else values[-newref]
-            if type(expr) == LispLambda:
-                return expr.capture(values)
-
-            return expr
-
-        return LispList([ LispLambda.replace(sub, values) for sub in expr ])
-
-
-    def resolve_local_sym(self, sym, local):
-        for i,name in enumerate(reversed(local)):
-            if sym == name:
-                return LispRef(i+1)
-
-        return None
-
-    def find_backrefs(self, expr, parameter, local):
-        result = set()
-        if expr.is_atom():
-            if type(expr) == LispSym and expr not in parameter:
-                local_ref = self.resolve_local_sym(expr, local)
-                if local_ref is not None:
-                    result = set([(expr, local_ref)])
-        else:
-            for sub in expr:
-                result = result.union( self.find_backrefs(sub, parameter, local) )
-
-        return result
-
+        return self
 
     def process(self, expr, local, exe=False):
         if expr.is_atom():
             if type(expr) == LispSym:
-                local_ref = self.resolve_local_sym(expr, local)
+                local_ref = LispLambda.resolve_local_sym(expr, local)
                 if local_ref is not None:
                     return local_ref
 
@@ -292,3 +244,27 @@ class LispLambda(LispObj):
             raise LambdaError("%s: not executable" % (processed_function))
 
         return LispList( [processed_function] + processed_parameter )
+
+
+    #
+    # class methods
+    #
+    def resolve_local_sym(sym, local):
+        for i,name in enumerate(reversed(local)):
+            if sym == name:
+                return LispRef(i+1)
+
+        return None
+
+    def find_backrefs(expr, parameter, local):
+        result = set()
+        if expr.is_atom():
+            if type(expr) == LispSym and expr not in parameter:
+                local_ref = LispLambda.resolve_local_sym(expr, local)
+                if local_ref is not None:
+                    result = set([(expr, local_ref)])
+        else:
+            for sub in expr:
+                result = result.union( LispLambda.find_backrefs(sub, parameter, local) )
+
+        return result
