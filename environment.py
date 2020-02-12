@@ -104,6 +104,9 @@ class Environment:
                     return stack[-int(expr)]
 
                 if type(expr) == LispLambda:
+                    return expr
+
+                if type(expr) == LispClosure:
                     return expr.capture(stack)
 
                 return expr
@@ -154,7 +157,7 @@ class Environment:
                     raise EvalError("%s: illegal number of parameter to builtin function"
                             % (function))
 
-            if type(evalfun) == LispLambda:
+            if isinstance(evalfun, LispLambda):
                 if evalfun.argc != len(evalpar):
                     raise EvalError("%s: expects %d parameter, got %d" %
                             (function, evalfun.argc, len(evalpar)))
@@ -174,7 +177,7 @@ class Environment:
                 bindings += len(evalpar)
 
                 # if we execute a closure, add captured values to stack
-                if evalfun.closure:
+                if type(evalfun) == LispClosure:
                     stack = stack + evalfun.capture_values
                     bindings += len(evalfun.capture_values)
 

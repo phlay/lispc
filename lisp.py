@@ -5,7 +5,19 @@ class LispError(Exception): pass
 class LambdaError(LispError): pass
 
 
+
+#
+# Classes
+#
 class LispObj:
+    def _bake(self, local, binding=False):
+        return self
+
+    def _backrefs(self, local, parameter):
+        return set()
+
+    def _rewrite(self, stack):
+        return self
 
     def is_true(self):
         return True
@@ -27,6 +39,7 @@ class LispObj:
 
 
 
+
 class LispList(list, LispObj):
     def __str__(self):
         # special case for quote
@@ -40,6 +53,58 @@ class LispList(list, LispObj):
 
     def __repr__(self):
         return str(self)
+
+
+    def _bake(self, local, binding=False):
+        if self.is_atom():
+            return self
+
+        function = self.head()
+        parameter = self.tail()
+
+        # handle special cases first: "quote", "if" and "lambda"
+        if type(function) == LispSym:
+            if function == "quote":
+                if len(parameter) != 1:
+                    raise LambdaError("quote needs exactly one parameter")
+                return self
+            elif function == "if":
+                if len(parameter) != 3:
+                    raise LambdaError("if needs exactly three parameter")
+
+                return LispList( [ x._bake(local) for x in self ] )
+
+            elif function == "lambda":
+                if binding:
+                    return LispLambda(self, local)
+                else:
+                    return LispClosure(self, local)
+
+        # bake function call
+        baked_function = function._bake(local, binding=True)
+        baked_parameter = [ p._bake(local) for p in parameter ]
+        if not baked_function.is_executable():
+            raise LambdaError("%s: not executable" % (baked_function))
+
+        if type(baked_function) == LispLambda:
+            if baked_function.argc != len(baked_parameter):
+                raise LambdaError("%s: expects %d parameter, got %d" %
+                        (function,
+                         baked_function.argc,
+                         len(baked_parameter)))
+
+        return LispList( [baked_function] + baked_parameter )
+
+    def _backrefs(self, local, parameter):
+        result = set()
+        for sub in self:
+            result |= sub._backrefs(local, parameter)
+
+        return result
+
+    def _rewrite(self, stack):
+        return LispList( [ x._rewrite(stack) for x in self ] )
+
 
     def head(self):
         if len(self) == 0:
@@ -77,23 +142,55 @@ class LispList(list, LispObj):
         return False
 
 
+
+
 class LispSym(str, LispObj):
     def __repr__(self):
         return str(self)
 
+    def _resolve_local(self, local):
+        for i,name in enumerate(reversed(local)):
+            if self == name:
+                return LispRef(i+1)
+
+        return None
+
+    def _bake(self, local, binding=False):
+        local_ref = self._resolve_local(local)
+        if local_ref is not None:
+            return local_ref
+
+        return self
+
+    def _backrefs(self, local, parameter):
+        if self not in parameter:
+            ref = self._resolve_local(local)
+            if ref is not None:
+                return set([(self, ref)])
+
+        return set()
+
+
     def is_executable(self):
         return True
+
 
 
 class LispRef(int, LispObj):
     def __repr__(self):
         return str(self)
 
+    def __str__(self):
+        return '$%d' % (int(self))
+
+
+    def _rewrite(self, stack):
+        return stack[-self]
+
+
     def is_executable(self):
         return True
 
-    def __str__(self):
-        return '$%d' % (int(self))
 
 
 class LispInt(int, LispObj):
@@ -125,11 +222,10 @@ class LispTrue(LispObj):
 
 
 class LispBuiltin(LispObj):
-    def __init__(self, f, argc = None, side = False):
+    def __init__(self, f, argc=None):
         self.name = f.__name__
         self.function = f
         self.argc = argc
-        self.side_effect = side
         self.extern = "__" + f.__name__
 
     def __repr__(self):
@@ -145,7 +241,18 @@ class LispBuiltin(LispObj):
 
 class LispLambda(LispObj):
 
-    def __init__(self, expr, local = None, closure = False):
+    def __init__(self, expr=None, local=None):
+        if expr is not None:
+            self._load(expr, local)
+
+    def __str__(self):
+        return "( λ %d %s )" % (self.argc, self.body)
+
+    def __repr__(self):
+        return str(self)
+
+
+    def _load(self, expr, local):
         if local is None:
             local = []
 
@@ -162,104 +269,124 @@ class LispLambda(LispObj):
             raise LambdaError("%s: parameter symbols are not unique"
                     % (lambda_parameter))
 
-        if closure:
-            backrefs = LispLambda.find_backrefs(lambda_body, set(lambda_parameter), local)
-            local = lambda_parameter + [ R[0] for R in backrefs ]
-            self.capture_indices = [ R[1] for R in backrefs ]
-            self.capture_values = None
-
-        else:
-            local = local + lambda_parameter
-
-        self.closure = closure and self.capture_indices
         self.argc = len(lambda_parameter)
-        self.body = self.process(lambda_body, local)
+        self.body = lambda_body._bake(local + lambda_parameter)
 
 
-    def __str__(self):
-        if self.closure:
-            values = self.capture_values if self.capture_values else self.capture_indices
-            return "( ξ %s %d %s )" % \
-                    (LispList(values), self.argc, self.body)
-        else:
-            return "( λ %d %s )" % (self.argc, self.body)
+    def _rewrite(self, stack):
+        # build new stack
+        newstack = [ LispRef(x+self.argc) if type(x) == LispRef else x
+                     for x in stack ]
+        newstack += [ LispRef(i) for i in reversed(range(1,self.argc+1)) ]
 
-    def __repr__(self):
-        return str(self)
+        # build lambda with rewritten body
+        new = LispLambda()
+        new.argc = self.argc
+        new.body = self.body._rewrite(newstack)
+        return new
+
 
     def is_executable(self):
         return True
 
+
+
+
+class LispClosure(LispLambda):
+
+    def __init__(self, expr=None, local=None):
+        if expr is not None:
+            self._load(expr, local)
+
+    def __str__(self):
+        values = self.capture_values if self.capture_values else self.capture_indices
+        return "( ξ %s %d %s )" % (LispList(values), self.argc, self.body)
+
+
+    def _load(self, expr, local):
+        if local is None:
+            local = []
+
+        if not expr.is_head("lambda"):
+            raise LambdaError("%s: not a lambda" % (expr))
+
+        if len(expr) != 3:
+            raise LambdaError("lambda needs two parameter")
+
+        lambda_parameter = expr[1]
+        lambda_body = expr[2]
+
+        if len(lambda_parameter) != len(set(lambda_parameter)):
+            raise LambdaError("%s: parameter symbols are not unique"
+                    % (lambda_parameter))
+
+        backrefs = lambda_body._backrefs(local, set(lambda_parameter))
+
+        local = lambda_parameter + [ R[0] for R in backrefs ]
+        self.capture_indices = [ R[1] for R in backrefs ]
+        self.capture_values = None
+
+        self.argc = len(lambda_parameter)
+        self.body = lambda_body._bake(local)
+
+
+    def _rewrite(self, stack):
+        # claculate the new captured indices array by skipping all indices that
+        # are now resolved
+        new_indices = [ i for i in self.capture_indices
+                        if type(stack[-i]) == LispRef ]
+
+        # Now run backwards through capture_indices and build a substitution:
+        # If an index resolves to a value now put this into substitution,
+        # otherwise calculate the position in new_indices this index corresponds
+        # to and put this in.
+        lost_indices = 0
+        substitution = []
+        for i in reversed(range(len(self.capture_indices))):
+            resolved = stack[-self.capture_indices[i]]
+            if type(resolved) == LispRef:
+                substitution.insert(0, LispRef(len(self.capture_indices) - i - lost_indices))
+            else:
+                substitution.insert(0, resolved)
+                lost_indices += 1
+
+        # calculate new references to closure's parameters
+        for i in range(self.argc):
+            substitution.insert(0, LispRef(i + 1 + len(new_indices)))
+
+        # create new closure with rewritten body
+        new = LispClosure()
+        new.capture_indices = new_indices
+        new.capture_values = None
+        new.argc = self.argc
+        new.body = self.body._rewrite(substitution)
+        return new
+
+
+
+
+    def is_executable(self):
+        return bool(self.capture_values)
+
     def capture(self, stack):
-        if self.closure:
-            new = copy(self)
-            new.capture_values = [ stack[-i] for i in self.capture_indices ]
-            return new
+        new = copy(self)
+        new.capture_values = [ stack[-i] for i in self.capture_indices ]
+        return new
 
-        return self
+    def resolve(self):
+        if self.capture_indices and self.capture_values is None:
+            raise LambdaError("resolve closure without captured stack")
 
-    def process(self, expr, local, exe=False):
-        if expr.is_atom():
-            if type(expr) == LispSym:
-                local_ref = LispLambda.resolve_local_sym(expr, local)
-                if local_ref is not None:
-                    return local_ref
+        new = LispLambda()
+        new.argc = self.argc
 
-            return expr
+        if self.capture_values:
+            subst = [ LispRef(i) for i in reversed(range(1, self.argc+1)) ]
+            subst += self.capture_values
+            new.body = self.body._rewrite(subst)
 
-        function = expr.head()
-        parameter = expr.tail()
-
-        if type(function) == LispSym:
-            if function == "quote":
-                if len(parameter) != 1:
-                    raise LambdaError("quote needs exactly one parameter")
-                return expr
-            elif function == "if":
-                if len(parameter) != 3:
-                    raise EvalError("if needs exactly three parameter")
-
-                condition = self.process(parameter[0], local)
-                case_true = self.process(parameter[1], local)
-                case_false = self.process(parameter[2], local)
-
-                return LispList([ LispSym("if"),
-                                  condition,
-                                  case_true,
-                                  case_false ])
-
-            elif function == "lambda":
-                return LispLambda(expr, local, closure=(not exe))
-
-
-        # process function call
-        processed_function = self.process(function, local, exe=True)
-        processed_parameter = LispList([ self.process(p, local) for p in parameter ])
-        if not processed_function.is_executable():
-            raise LambdaError("%s: not executable" % (processed_function))
-
-        return LispList( [processed_function] + processed_parameter )
-
-
-    #
-    # class methods
-    #
-    def resolve_local_sym(sym, local):
-        for i,name in enumerate(reversed(local)):
-            if sym == name:
-                return LispRef(i+1)
-
-        return None
-
-    def find_backrefs(expr, parameter, local):
-        result = set()
-        if expr.is_atom():
-            if type(expr) == LispSym and expr not in parameter:
-                local_ref = LispLambda.resolve_local_sym(expr, local)
-                if local_ref is not None:
-                    result = set([(expr, local_ref)])
         else:
-            for sub in expr:
-                result = result.union( LispLambda.find_backrefs(sub, parameter, local) )
+            # no rewriting needed
+            new.body = self.body
 
-        return result
+        return new

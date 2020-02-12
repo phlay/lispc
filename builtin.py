@@ -161,8 +161,8 @@ def builtin_println(*param):
 TABLE = {
         LispSym('head') : LispBuiltin(builtin_head, 1),
         LispSym('tail') : LispBuiltin(builtin_tail, 1),
-        LispSym('print') : LispBuiltin(builtin_print, None, side=True),
-        LispSym('println') : LispBuiltin(builtin_println, None, side=True),
+        LispSym('print') : LispBuiltin(builtin_print, None),
+        LispSym('println') : LispBuiltin(builtin_println, None),
         LispSym('cons') : LispBuiltin(builtin_cons, 2),
         LispSym('atom') : LispBuiltin(builtin_atom, 1),
         LispSym('list') : LispBuiltin(builtin_list),

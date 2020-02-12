@@ -40,22 +40,52 @@ class Compiler:
         self.counter = 0
 
 
-    def compile(self, sym):
+    def compile_symbol(self, sym):
         if sym not in self.env.symbols:
             raise CompileError("%s: symbol not found" % (sym))
 
         item = self.env.symbols[sym]
-        if type(item) == LispLambda:
-            self.lambda_cache[str(item)] = sym
-            self.compiled_lambda[sym] = LambdaCompiler(self, item, sym)
-        else:
-            raise CompileError("%s: not a function" % (sym))
+
+        if type(item) == LispClosure:
+            item = item.resolve()
+
+        return self.compile_expression(item, sym)
+
+
+    def compile_expression(self, expr, name=None):
+        if isinstance(expr, LispLambda):
+            # do we already have a label for this?
+            if str(expr) in self.lambda_cache:
+                return self.lambda_cache[str(expr)], expr.argc
+
+            # invent a label if this is anonymous
+            if name is None:
+                label = "__lambda_%s" % (self.get_unique())
+            else:
+                label = name
+
+            # finally enter laber in our cache and compile it
+            self.lambda_cache[str(expr)] = label
+            self.compiled_lambda[label] = LambdaCompiler(self, expr, label)
+
+            return label, expr.argc
+
+        elif type(expr) == LispBuiltin:
+            self.extern.add(expr.extern)
+            self.extern.add(expr.extern + ".continue")
+
+            return expr.extern, expr.argc
+
+
+        raise CompileError("%s: not executable" % (expr))
+
+
 
 
     def get_assembly(self):
 
         self.reset()
-        self.compile(self.target_symbol)
+        self.compile_symbol(self.target_symbol)
 
         result = ""
 
@@ -139,43 +169,6 @@ class Compiler:
         return result
 
 
-    def get_function_label(self, expr, sym = None):
-
-        # do we get an symbol? resolve it
-        while type(expr) == LispSym:
-            sym = expr
-            if sym not in self.env.symbols:
-                raise CompileError("%s: undefined symbol" % (sym))
-
-            expr = self.env.symbols[sym]
-
-        if type(expr) == LispLambda:
-            # do we already have a label for this?
-            if str(expr) in self.lambda_cache:
-                return self.lambda_cache[str(expr)], expr.argc
-
-            # invent a label if this is anonymous
-            if sym is None:
-                label = "__lambda_%s" % (self.get_unique())
-            else:
-                label = sym
-
-            # finally enter laber in our cache and compile it
-            self.lambda_cache[str(expr)] = label
-            self.compiled_lambda[label] = LambdaCompiler(self, expr, label)
-
-            return label, expr.argc
-
-        elif type(expr) == LispBuiltin:
-            self.extern.add(expr.extern)
-            self.extern.add(expr.extern + ".continue")
-
-            return expr.extern, expr.argc
-
-
-        raise CompileError("%s: not executable" % (expr))
-
-
 
     def get_string_label(self, string):
         if string in self.string_cache:
@@ -220,12 +213,12 @@ class LambdaCompiler:
 
 
     def compile(self, expr):
-        if type(expr) != LispLambda:
+        if not isinstance(expr, LispLambda):
             raise CompileError("%s: not a lambda" % (expr))
 
         lambda_body = expr.body
         lambda_bindings = expr.argc
-        if expr.closure:
+        if type(expr) == LispClosure:
             lambda_bindings += len(expr.capture_indices)
 
         # emit function label
@@ -370,7 +363,7 @@ class LambdaCompiler:
             self.emit_expr_final(function.body, bindings=bindings+len(parameter))
 
         elif type(function) == LispSym:
-            function_label, function_argc = self.compiler.get_function_label(function)
+            function_label, function_argc = self.compiler.compile_symbol(function)
             if function_argc is not None and function_argc != parameter_count:
                 raise CompileError("%s: expects %d parameter but got %d"
                         % (function, function_argc, parameter_count))
@@ -478,7 +471,7 @@ class LambdaCompiler:
             self.emit_expr(function.body, bindings=bindings+len(parameter))
 
         elif type(function) == LispSym:
-            function_label, function_argc = self.compiler.get_function_label(function)
+            function_label, function_argc = self.compiler.compile_symbol(function)
             if function_argc is not None and function_argc != len(parameter):
                 raise CompileError("%s: expects %d parameter but got %d" %
                         (function, function_argc, len(parameter)))
@@ -583,9 +576,9 @@ class LambdaCompiler:
             if mov_rbx_rax:
                 self.text += "\tpop\trbx\n"
 
-        elif type(expr) == LispBuiltin or type(expr) == LispLambda:
+        elif type(expr) == LispBuiltin or isinstance(expr, LispLambda):
             self.compiler.extern.add("__mem_lambda")
-            function_label, function_argc = self.compiler.get_function_label(expr, sym)
+            function_label, function_argc = self.compiler.compile_expression(expr, sym)
 
             if mov_rbx_rax:
                 self.text += "\tpush\trax\n"
@@ -598,8 +591,8 @@ class LambdaCompiler:
             else:
                 self.text += "\tmov\trbx, %d\n" % (function_argc)
 
-            # are we dealing with a closure?
-            if type(expr) == LispLambda and expr.closure:
+            # are we dealing with a closure that actually captured something?
+            if type(expr) == LispClosure and expr.capture_indices:
                 # first create a lambda
                 self.text += "\tcall\t__mem_lambda\n"
 
