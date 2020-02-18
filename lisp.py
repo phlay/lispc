@@ -366,7 +366,7 @@ class LispClosure(LispLambda):
 
 
     def is_executable(self):
-        return bool(self.capture_values)
+        return not bool(self.capture_indices) or bool(self.capture_values)
 
     def capture(self, stack):
         new = copy(self)

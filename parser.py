@@ -125,4 +125,3 @@ file_parser = yacc.yacc(optimize=False, debug=False, start = 'sequence')
 def load_file(fn):
     with open(fn, 'r') as f:
         return file_parser.parse(f.read())
-

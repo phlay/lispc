@@ -104,3 +104,6 @@ else:
     except RecursionError:
         print('Error: maximum recursion depth reached')
         exit(1)
+    except KeyboardInterrupt:
+        print()
+        exit(1)

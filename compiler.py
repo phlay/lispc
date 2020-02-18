@@ -233,11 +233,11 @@ class LambdaCompiler:
         self.text += ".continue:\n"
 
         # emit body
-        self.emit_expr_final(lambda_body, lambda_bindings)
+        self.emit_expression(lambda_body, lambda_bindings, final=True)
 
 
 
-    def emit_stack_reorder(self, old, new):
+    def emit_stack_reorder(self, old, new=0):
         if old == 0:
             return
 
@@ -259,135 +259,27 @@ class LambdaCompiler:
             self.text += "\tadd\trsp, 8*%d\n" % (old)
 
 
-
-
-    def emit_expr_final(self, expr, bindings, offset=0):
-        if expr.is_atom():
-            self.emit_constant_to_rax(expr, exit=True,
-                                            offset=offset,
-                                            bindings=bindings)
-            return
-
-        function = expr[0]
-        parameter = expr[1:]
-
-        if type(function) == LispSym:
-            if function == "if":
-                self.compiler.extern.add("__true")
-                iflabel = ".if_%s_false" % self.get_unique()
-                # evaluate if-expression
-                #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
-                self.emit_expr(parameter[0], offset=offset)
-                self.text += "\tcall\t__true\n"
-                self.text += "\tjc\t%s\n" % (iflabel)
-                # true case
-                self.text += "\n"
-                self.emit_expr_final(parameter[1], bindings, offset)
-                # false case
-                self.text += "\n"
-                self.text += "%s:\n" % (iflabel)
-                self.emit_expr_final(parameter[2], bindings, offset)
-                return
-
-            elif function == "eval":
-                self.compiler.extern.add("__eval")
-                self.emit_expr(parameter[0], offset=offset)
-                self.text += "\tjmp\t__eval\n"
-                return
-
-            elif function == "quote":
-                self.emit_constant_to_rax(parameter[0],
-                                          exit=True,
-                                          offset=offset,
-                                          bindings=bindings)
-                return
-
-
-        #
-        # check for parameter-takeover case: function we call
-        # directly uses our parameters on stack.
-        # parameter_count still holds the original number of
-        # parameter the function gets.
-        #
-        parameter_count = len(parameter)
-        if type(function) != LispLambda:
-            while bindings > 0 and len(parameter) > 0:
-                first = parameter[0]
-                if type(first) != LispRef or int(first) != bindings:
-                    break
-
-                bindings -= 1
-                parameter = parameter[1:]
-
-        #
-        # now evaluate parameters and push them on stack
-        #
-        for p in parameter:
-            self.emit_expr(p, offset=offset)
-            self.text += "\tpush\trax\n"
-            offset += 1
-            self.text += "\n"
-
-
-        #
-        # now we call our function, there are three cases
-        #
-        #  1) Dynamic Function, given by a local reference
-        #  2) Dynamic Function, given as result of a lambda application
-        #  3) Local Binding, a call to an anonymous lambda
-        #  4) Static Function, a lambda call given by symbol
-        #
-        if type(function) == LispRef:
-            self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
-                    (offset + int(function) - 1)
-            self.emit_stack_reorder(bindings, len(parameter))
-            self.text += "\tmov\trcx, %d\n" % (parameter_count)
-
-            self.text += "\tjmp\t__apply.continue\n"
-            self.compiler.extern.add("__apply.continue")
-
-        elif type(function) == LispList:
-            self.emit_expr(function, offset=offset)
-            self.emit_stack_reorder(bindings, len(parameter))
-            self.text += "\tmov\trcx, %d\n" % (parameter_count)
-            self.text += "\tjmp\t__apply.continue\n"
-            self.compiler.extern.add("__apply.continue")
-
-        elif type(function) == LispLambda:
-            if function.argc is None:
-                raise CompileError("%s: variadic lambda not allowed in local binding" % (function))
-            if function.argc != parameter_count:
-                raise CompileError("%s: expects %d parameter but got %d"
-                        % (function, function_argc, parameter_count))
-
-            self.emit_expr_final(function.body, bindings=bindings+len(parameter))
-
-        elif type(function) == LispSym:
-            function_label, function_argc = self.compiler.compile_symbol(function)
-            if function_argc is not None and function_argc != parameter_count:
-                raise CompileError("%s: expects %d parameter but got %d"
-                        % (function, function_argc, parameter_count))
-
-            self.emit_stack_reorder(bindings, len(parameter))
-
-            # if variadic, inform our function how many parameter it is receiving
-            if function_argc is None:
-                self.text += "\tmov\trcx, %d\n" % (parameter_count)
-
-            self.text += "\tjmp\t%s.continue\n" % (function_label)
-
-        else:
-            raise CompileError("%s: not executable" % (function))
-
-
-
-
-    def emit_expr(self, expr, bindings=0, offset=0):
-
-        #print("[DEBUG] emit_expr: %s" % (expr))
+    #
+    # emit_expression - recursively compile expression
+    #
+    # bindings      The number of variables on stack we are responsible for:
+    #               All bindings must be cleaned up after the call or for
+    #               jumping.
+    #
+    # offset        Offset for local references: everytime we change the stack
+    #               this must be adjusted. If we execute a new body we can set
+    #               reset back to 0.
+    #
+    # final         True if this is the last expression in lambda.
+    #
+    def emit_expression(self, expr, bindings=0, offset=0, final=False):
+        #print("[DEBUG] emit_expression: %s" % (expr))
+        #print("[DEBUG] \t\t bindings=%d, offset=%d, final=%s" % (bindings, offset, final))
 
         if expr.is_atom():
-            self.emit_constant_to_rax(expr, offset=offset)
+            self.emit_constant(expr, bindings=bindings,
+                                     offset=offset,
+                                     final=final)
             return
 
         function = expr[0]
@@ -397,107 +289,192 @@ class LambdaCompiler:
             if function == "if":
                 self.compiler.extern.add("__true")
                 iflabel = ".if_%s_" % self.get_unique()
-                # evaluate if-condition
+
+                # evaluate if-expression
                 #self.text += '\t; evaluate if-condition "%s"\n' % (parameter[0])
-                self.emit_expr(parameter[0], offset=offset)
+                self.emit_expression(parameter[0], offset=offset)
                 self.text += "\tcall\t__true\n"
-                self.text += "\tjc\t%s\n" % (iflabel+"false")
+                self.text += "\tjc\t%s\n" % (iflabel + "false")
+
+                #
+                # now emit true and false branches for our if
+                #
+                # we push responsibility for our bindings to next level and let
+                # it do the cleanup (even if final is False).
+                #
+
                 # true case
                 self.text += "\n"
-                self.emit_expr(parameter[1], bindings, offset)
-                self.text += "\tjmp\t%s\n" % (iflabel + "end")
+                self.emit_expression(parameter[1], bindings, offset, final)
+                if not final:
+                    self.text += "\tjmp\t%s\n" % (iflabel + "end")
+
                 # false case
                 self.text += "\n"
                 self.text += "%s:\n" % (iflabel + "false")
-                self.emit_expr(parameter[2], bindings, offset)
-                # end if
-                self.text += "\n"
-                self.text += "%s:\n" % (iflabel + "end")
+                self.emit_expression(parameter[2], bindings, offset, final)
+
+                # add end-label if we aren't  a final expression
+                if not final:
+                    self.text += "\n"
+                    self.text += "%s:\n" % (iflabel + "end")
                 return
 
             elif function == "eval":
                 self.compiler.extern.add("__eval")
-                self.emit_expr(parameter[0], offset=offset)
-                self.text += "\tcall\t__eval\n"
+                self.emit_expression(parameter[0], offset=offset)
+                self.text += "\t%s\t__eval\n" % ("jmp" if final else "call")
                 return
 
             elif function == "quote":
-                self.emit_constant_to_rax(parameter[0])
+                self.emit_constant(parameter[0], bindings=bindings,
+                                                 offset=offset,
+                                                 final=final)
                 return
 
 
-        # if this is not a local binding we are going to call a function
-        # and therefor need a dummy on our stack
-        self.text += "\t; eval %s\n" % (expr)
-        if type(function) != LispLambda:
-            self.text += "\tpush\trax\t\t\t; dummy\n"
-            offset += 1
 
-        # push parameter for function call
-        for p in parameter:
-            self.emit_expr(p, offset=offset)
-            self.text += "\tpush\trax\n"
-            offset += 1
+        # Save the original number of parameter. Code below might change
+        # parameter array (for parameter take-over), but we still need
+        # the original length in some places.
+        parameter_count = len(parameter)
+
+
+        if final:
+            # check for parameter take-over optimization: If we continue (jump)
+            # to a function which uses exactly the same parameter we ourself
+            # got (and maybe additional ones) we can save ourself the work
+            # for re-pushing and later stack-reordering.
+            # don't do this in case we use a lambda to introduce new bindings.
+            if type(function) != LispLambda:
+                while bindings > 0 and len(parameter) > 0:
+                    first = parameter[0]
+                    if type(first) != LispRef or int(first) != bindings:
+                        break
+
+                    # remove from bindings, to exclude it from stack-reorder
+                    bindings -= 1
+                    # remove from parameter list: it is already on our stack
+                    parameter = parameter[1:]
+        else:
+            # if this is not a local binding we are going to call a function
+            # and therefor need a dummy on our stack
+            self.text += "\t; %s\n" % (expr)
+            if type(function) != LispLambda:
+                self.text += "\tpush\trax\t\t\t; dummy\n"
+                offset += 1
+
 
         #
-        # call our function
+        # now evaluate parameters and push them on stack
+        #
+        for p in parameter:
+            self.emit_expression(p, offset=offset)
+            self.text += "\tpush\trax\n"
+            offset += 1
+            self.text += "\n"
+
+
+        #
+        # now we call or continue to our function, there are three cases
+        #
+        #  1) Dynamic Function, given by a local reference
+        #  2) Dynamic Function, given as result of a lambda application
+        #  3) Local Binding, a call to an anonymous lambda
+        #  4) Static Function, a lambda call given by symbol
         #
         if type(function) == LispRef:
             self.text += "\tmov\trax, [rsp + 8*%d]\n" % \
                     (offset + int(function) - 1)
-            self.text += "\tmov\trcx, %d\n" % (len(parameter))
-            self.text += "\tcall\t__apply\n"
-            self.compiler.extern.add("__apply")
 
-            # remove local bindings
-            if bindings > 0:
-                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+            if final:
+                self.emit_stack_reorder(bindings, len(parameter))
+
+            # apply takes number of parameter in rcx register
+            self.text += "\tmov\trcx, %d\n" % (parameter_count)
+
+            if final:
+                self.compiler.extern.add("__apply.continue")
+                self.text += "\tjmp\t__apply.continue\n"
+            else:
+                self.compiler.extern.add("__apply")
+                self.text += "\tcall\t__apply\n"
+
+                # remove local bindings
+                if bindings > 0:
+                    self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+
 
         elif type(function) == LispList:
-            self.emit_expr(function, offset=offset)
-            self.text += "\tmov\trcx, %d\n" % (len(parameter))
-            self.text += "\tcall\t__apply\n"
-            self.compiler.extern.add("__apply")
-            if bindings > 0:
-                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+            self.emit_expression(function, offset=offset)
+
+            if final:
+                self.emit_stack_reorder(bindings, len(parameter))
+
+            self.text += "\tmov\trcx, %d\n" % (parameter_count)
+
+            if final:
+                self.text += "\tjmp\t__apply.continue\n"
+                self.compiler.extern.add("__apply.continue")
+            else:
+                self.text += "\tcall\t__apply\n"
+                self.compiler.extern.add("__apply")
+                # remove local bindings
+                if bindings > 0:
+                    self.text += "\tadd\trsp, 8*%d\n" % (bindings)
 
         elif type(function) == LispLambda:
             if function.argc is None:
                 raise CompileError("%s: variadic lambda not allowed in local binding" % (function))
-            if function.argc != len(parameter):
+            if function.argc != parameter_count:
                 raise CompileError("%s: expects %d parameter but got %d"
-                        % (function, function_argc, len(parameter)))
+                        % (function, function_argc, parameter_count))
 
-            self.emit_expr(function.body, bindings=bindings+len(parameter))
+            self.emit_expression(function.body,
+                                 bindings=bindings+len(parameter),
+                                 final=final)
 
         elif type(function) == LispSym:
             function_label, function_argc = self.compiler.compile_symbol(function)
-            if function_argc is not None and function_argc != len(parameter):
-                raise CompileError("%s: expects %d parameter but got %d" %
-                        (function, function_argc, len(parameter)))
+            if function_argc is not None and function_argc != parameter_count:
+                raise CompileError("%s: expects %d parameter but got %d"
+                        % (function, function_argc, parameter_count))
 
-            # parameter count if called function is variadic
+            if final:
+                self.emit_stack_reorder(bindings, len(parameter))
+
+            # if variadic, inform our function how many parameter it is receiving
             if function_argc is None:
-                self.text += "\tmov\trcx, %d\n" % (len(parameter))
+                self.text += "\tmov\trcx, %d\n" % (parameter_count)
 
-            self.text += "\tcall\t%s\n" % (function_label)
+            if final:
+                self.text += "\tjmp\t%s.continue\n" % (function_label)
+            else:
+                self.text += "\tcall\t%s\n" % (function_label)
 
-            # remove local bindings
-            if bindings > 0:
-                self.text += "\tadd\trsp, 8*%d\n" % (bindings)
+                # remove local bindings
+                if bindings > 0:
+                    self.text += "\tadd\trsp, 8*%d\n" % (bindings)
 
         else:
             raise CompileError("%s: not executable" % (function))
 
 
 
-    def emit_constant_to_rax(self, expr, offset=0, exit=False, bindings=0, mov_rbx_rax=False, rax_zero=False):
 
-        action = "jmp" if exit else "call"
+    def emit_constant(self, expr, bindings=0,
+                                  offset=0,
+                                  final=False,
+                                  save_rax_to_rbx=False,
+                                  rax_zero=False):
+
+        #print("[DEBUG] emit_constant: %s" % (expr))
+
+        action = "jmp" if final else "call"
         sym = None
 
-        if exit and mov_rbx_rax:
-            raise CompileError("internal error - can't save rbx and exit with constant")
+        if final and save_rax_to_rbx:
+            raise CompileError("internal error - impossible combination of save_rax_to_rbx and final")
 
 
         if type(expr) == LispSym:
@@ -505,16 +482,15 @@ class LambdaCompiler:
 
             # hande special symbols
             if sym == "quote":
-                if mov_rbx_rax:
+                if save_rax_to_rbx:
                     self.text += "\tmov\trbx, rax\n"
 
                 self.text += "\tmov\tal, TYPE_QUOTE\n"
                 self.text += "\tshl\trax, SHIFT_TYPE\n"
 
-                if exit:
-                    self.emit_stack_reorder(bindings, 0)
+                self.emit_stack_reorder(bindings)
+                if final:
                     self.text += "\tret\n"
-
                 return
 
             # try to resolv symbol
@@ -524,63 +500,66 @@ class LambdaCompiler:
 
 
         if type(expr) == LispInt:
-            self.compiler.extern.add("__mem_int")
-
-            if mov_rbx_rax:
+            self.emit_stack_reorder(bindings)
+            if save_rax_to_rbx:
                 self.text += "\tmov\trbx, rax\n"
-            if exit:
-                self.emit_stack_reorder(bindings, 0)
 
             self.text += "\tmov\trax, %d\n" % (expr)
             self.text += "\t%s\t__mem_int\n" % (action)
+            self.compiler.extern.add("__mem_int")
 
-        #elif type(expr) == LispReal:
-        #    self.text += "\tmov\txmm0, %f\n" % (expr)
-        #    self.text += "\t%s\t__mem_real\n" % (action)
+
+#        elif type(expr) == LispReal:
+#            self.emit_stack_reorder(bindings)
+#            if save_rax_to_rbx:
+#                self.text += "\tpush\trax\n"
+#            self.text += "\tmov\txmm0, %f\n" % (expr)
+#            self.text += "\t%s\t__mem_real\n" % (action)
+#            if save_rax_to_rbx:
+#                self.text += "\tpop\trbx\n"
 
         elif type(expr) == LispRef:
-            if mov_rbx_rax:
+            if save_rax_to_rbx:
                 self.text += "\tmov\trbx, rax\n"
 
             self.text += "\tmov\trax, [rsp + 8*%d]\t; %s\n" % \
                     (offset + int(expr) - 1, expr)
 
-            if exit:
-                self.emit_stack_reorder(bindings, 0)
+            self.emit_stack_reorder(bindings)
+            if final:
                 self.text += "\tret\n"
 
         elif type(expr) == LispTrue:
-            if mov_rbx_rax:
+            if save_rax_to_rbx:
                 self.text += "\tmov\trbx, rax\n"
 
             self.text += "\tmov\tal, TYPE_TRUE\n"
             self.text += "\tshl\trax, SHIFT_TYPE\n"
 
-            if exit:
-                self.emit_stack_reorder(bindings, 0)
+            self.emit_stack_reorder(bindings)
+            if final:
                 self.text += "\tret\n"
 
         elif type(expr) == LispStr:
             label = self.compiler.get_string_label(expr)
 
-            if mov_rbx_rax:
+            self.emit_stack_reorder(bindings)
+            if save_rax_to_rbx:
                 self.text += "\tpush\trax\n"
-            if exit:
-                self.emit_stack_reorder(bindings, 0)
 
             self.text += "\tmov\trsi, %s\n" % (label)
             self.text += "\tmov\trbx, %d\n" % (len(expr))
             self.text += "\t%s\t__mem_string\n" % (action)
             self.compiler.extern.add("__mem_string")
 
-            if mov_rbx_rax:
+            if save_rax_to_rbx:
                 self.text += "\tpop\trbx\n"
 
         elif type(expr) == LispBuiltin or isinstance(expr, LispLambda):
             self.compiler.extern.add("__mem_lambda")
             function_label, function_argc = self.compiler.compile_expression(expr, sym)
 
-            if mov_rbx_rax:
+            if save_rax_to_rbx:
                 self.text += "\tpush\trax\n"
 
             self.text += "\tlea\trsi, [%s.continue]\n" % (function_label)
@@ -596,59 +575,72 @@ class LambdaCompiler:
                 # first create a lambda
                 self.text += "\tcall\t__mem_lambda\n"
 
-                # now capture stack
+                # now let __mem_closure capture stack
+                # please note, that we can not continue to __mem_closure,
+                # because for that we must cleanup our stack... the exact thing
+                # __mem_clousre is supposed to capture ;-)
                 capture_label = self.compiler.get_capture_label(expr.capture_indices)
                 self.text += "\tlea\trbx, [%s]\n" % (capture_label)
                 self.text += "\tcall\t__mem_closure\n"
                 self.compiler.extern.add("__mem_closure")
 
-                if exit:
-                    self.emit_stack_reorder(bindings, 0)
+                # now we can clean up and go
+                if save_rax_to_rbx:
+                    self.text += "\tpop\trbx\n"
+                self.emit_stack_reorder(bindings)
+                if final:
                     self.text += "\tret\n"
 
             else:
-                if exit:
-                    self.emit_stack_reorder(bindings, 0)
+                if final:
+                    self.emit_stack_reorder(bindings)
+                    self.text += "\tjmp\t__mem_lambda\n"
+                else:
+                    self.text += "\tcall\t__mem_lambda\n"
+                    if save_rax_to_rbx:
+                        self.text += "\tpop\trbx\n"
+                    self.emit_stack_reorder(bindings)
 
-                self.text += "\t%s\t__mem_lambda\n" % (action)
-
-            if mov_rbx_rax:
-                self.text += "\tpop\trbx\n"
 
         elif type(expr) == LispList:
             if len(expr) == 0:
-                if mov_rbx_rax:
+                if save_rax_to_rbx:
                     self.text += "\tmov\trbx, rax\n"
                 if not rax_zero:
                     self.text += "\txor\trax, rax\n"
-                if exit:
-                    self.emit_stack_reorder(bindings, 0)
-                    self.text += "\tret"
+
+                self.emit_stack_reorder(bindings)
+                if final:
+                    self.text += "\tret\n"
 
             else:
                 self.compiler.extern.add("__cons")
 
-                if mov_rbx_rax:
+                if save_rax_to_rbx:
                     self.text += "\tpush\trax\n"
+                    offset += 1
 
                 if not rax_zero:
                     self.text += "\txor\trax, rax\n"
                     rax_zero = True
 
+                # we build our list in reverse with a series of __cons calls
                 for item in reversed(expr[1:]):
-                    self.emit_constant_to_rax(item, mov_rbx_rax = True, rax_zero = rax_zero)
+                    self.emit_constant(item, offset=offset, save_rax_to_rbx=True, rax_zero=rax_zero)
                     self.text += "\tcall\t__cons\n"
                     rax_zero = False
 
-                self.emit_constant_to_rax(expr[0], mov_rbx_rax = True, rax_zero = rax_zero)
-
-                if exit:
-                    self.emit_stack_reorder(bindings, 0)
-
-                self.text += "\t%s\t__cons\n" % (action)
-
-                if mov_rbx_rax:
-                    self.text += "\tpop\trbx\n"
+                # now do our last cons
+                self.emit_constant(expr[0], offset=offset, save_rax_to_rbx=True, rax_zero=rax_zero)
+                if final:
+                    self.emit_stack_reorder(bindings)
+                    self.text += "\tjmp\t__cons\n"
+                else:
+                    self.text += "\tcall\t__cons\n"
+                    # recover rbx from stack before removing all local bindings
+                    if save_rax_to_rbx:
+                        self.text += "\tpop\trbx\n"
+                    self.emit_stack_reorder(bindings)
 
         else:
             raise CompileError("can't compile atom: %s" % (expr))
