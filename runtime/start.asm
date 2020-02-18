@@ -4,6 +4,7 @@
 %include "panic.inc"
 
 extern	main
+extern	__type_is_int
 
 global	__start_stack
 
@@ -22,10 +23,15 @@ _start:		mov	rbp, MASK_ADDR
 		push	rax		; dummy
 		call	main
 
-		; XXX ignore return value for now
+		; if main returns an integer use it as return code
 		xor	rdi, rdi
-		mov	rax, SYS_EXIT
+		call	__type_is_int
+		jc	.exit
+		mov	rdi, [rax]
+.exit:		mov	rax, SYS_EXIT
 		syscall
+
+
 
 
 section .bss

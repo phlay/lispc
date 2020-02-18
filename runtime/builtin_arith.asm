@@ -148,7 +148,9 @@ __builtin_le:	pop	rax
 
 
 
-is_int:		mov	rdx, rax
+		global	__type_is_int
+
+__type_is_int:	mov	rdx, rax
 		shr	rdx, SHIFT_TYPE
 		and	dl, BYTEMASK_TYPE
 		cmp	dl, TYPE_INT
@@ -165,9 +167,9 @@ pop_2_int:	pop	rcx
 		pop	rax
 		pop	rbx
 		push	rcx
-		call	is_int
+		call	__type_is_int
 		jc	.out
 		xchg	rax, rbx
-		call	is_int
+		call	__type_is_int
 		jc	.out
 .out:		ret

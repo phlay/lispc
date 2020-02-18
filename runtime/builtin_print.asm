@@ -36,6 +36,7 @@ __builtin_print:
 		jmp	.loop
 
 .done:		lea	rsp, [rsp + 8*r9]	; clear stack
+		xor	rax, rax
 		ret
 
 
