@@ -31,6 +31,8 @@ parser.add_argument("-a", dest="leave_asm", action="store_true",
                     help="don't delete assembly file after compiling")
 parser.add_argument("-p", dest="print", action="store_true",
                     help="give assembly listing to stdout")
+parser.add_argument("-r", dest="runtime", default=None,
+                    help="alternative path to runtime")
 
 args = parser.parse_args()
 
@@ -65,9 +67,12 @@ if args.compile or args.print:
         comp = compiler.Compiler(env)
         comp.set_target_symbol(args.symbol)
         comp.set_leave_asm(args.leave_asm)
-        comp.set_runtime(conf.get('compiler',
-                                  'runtime',
-                                  fallback=DEFAULT_RUNTIME_PATH))
+        if args.runtime:
+            comp.set_runtime(args.runtime)
+        else:
+            comp.set_runtime(conf.get('compiler',
+                                      'runtime',
+                                      fallback=DEFAULT_RUNTIME_PATH))
 
         if args.print:
             sys.stdout.write(comp.get_assembly())
