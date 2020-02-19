@@ -7,7 +7,7 @@ import configparser
 
 import environment
 import compiler
-from lisp import LispError
+from lisp import LispError, LispInt
 
 
 DEFAULT_CONFIG_PATH = "~/.lisp.ini"
@@ -101,7 +101,9 @@ elif args.interactive or len(args.files) == 0:
 
 else:
     try:
-        env.interpret_single_line('(%s)' % (args.symbol))
+        result = env.interpret_single_line('(%s)' % (args.symbol))
+        if type(result) == LispInt:
+            exit(int(result))
 
     except LispError as e:
         print('Error: %s' % (e))
